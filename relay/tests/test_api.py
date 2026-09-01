@@ -28,7 +28,7 @@ def register_device(client: TestClient):
                 "deviceName": "Test iPhone",
                 "appVersion": "1.0.0",
                 "buildNumber": "1",
-                "bundleId": "io.hermesmobile.HermesMobile",
+                "bundleId": "cool.n0thing.hermes",
                 "installationId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                 "deviceModel": "iPhone17,2",
                 "systemVersion": "26.4",
@@ -77,7 +77,7 @@ def test_push_and_inbox_roundtrip(tmp_path):
                 "deviceId": device_id,
                 "apnsToken": "deadbeef",
                 "pushEnvironment": "sandbox",
-                "bundleId": "io.hermesmobile.HermesMobile",
+                "bundleId": "cool.n0thing.hermes",
             },
         )
         assert push_response.status_code == 200
@@ -164,7 +164,7 @@ def test_chat_reply_triggers_push_when_device_is_backgrounded(tmp_path):
                 "deviceId": device_id,
                 "apnsToken": "deadbeef",
                 "pushEnvironment": "sandbox",
-                "bundleId": "io.hermesmobile.HermesMobile",
+                "bundleId": "cool.n0thing.hermes",
             },
         )
         assert push_response.status_code == 200

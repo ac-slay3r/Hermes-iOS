@@ -74,7 +74,7 @@ final class AppContainer {
         let persistence = UserDefaultsAppPersistenceStore(defaults: resolvedDefaults)
         let buildConfiguration = AppBuildConfiguration.current()
         let secureStore = KeychainSecureStore(
-            serviceName: processEnvironment["UITEST_KEYCHAIN_SERVICE"] ?? "io.hermesmobile.HermesMobile.session"
+            serviceName: processEnvironment["UITEST_KEYCHAIN_SERVICE"] ?? "cool.n0thing.hermes.session"
         )
         let settingsStore = SettingsStore(
             persistence: persistence,
@@ -400,7 +400,7 @@ final class AppContainer {
             deviceId: deviceID.uuidString.lowercased(),
             apnsToken: normalizedToken,
             pushEnvironment: pushEnvironment,
-            bundleId: Bundle.main.bundleIdentifier ?? "io.hermesmobile.HermesMobile"
+            bundleId: Bundle.main.bundleIdentifier ?? "cool.n0thing.hermes"
         )
 
         struct PushRegisterResponse: Decodable {

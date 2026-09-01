@@ -137,7 +137,7 @@ APNs is optional. Without it, the app still works and refreshes when opened.
 APNS_KEY_PATH=/path/to/AuthKey_XXXXXXXXXX.p8
 APNS_KEY_ID=XXXXXXXXXX
 APNS_TEAM_ID=YYYYYYYYYY
-APNS_BUNDLE_ID=io.hermesmobile.HermesMobile
+APNS_BUNDLE_ID=cool.n0thing.hermes
 APNS_ENVIRONMENT=development
 ```
 

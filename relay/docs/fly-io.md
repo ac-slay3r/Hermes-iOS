@@ -60,7 +60,7 @@ Optional APNs:
 ```bash
 flyctl secrets set APNS_KEY_ID=XXXXXXXXXX -a your-relay-app
 flyctl secrets set APNS_TEAM_ID=YYYYYYYYYY -a your-relay-app
-flyctl secrets set APNS_BUNDLE_ID=io.hermesmobile.HermesMobile -a your-relay-app
+flyctl secrets set APNS_BUNDLE_ID=cool.n0thing.hermes -a your-relay-app
 flyctl secrets set APNS_ENVIRONMENT=development -a your-relay-app
 ```
 

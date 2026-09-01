@@ -1,0 +1,63 @@
+name: iOS CI
+
+on:
+  push:
+    branches: [master, main, "bringup/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-build:
+    name: Native iOS simulator build
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: xcodebuild -version
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project HermesMobile.xcodeproj -scheme HermesMobile
+      - name: Build without signing
+        run: >-
+          xcodebuild
+          -project HermesMobile.xcodeproj
+          -scheme HermesMobile
+          -configuration Debug
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
+          clean build
+
+  relay-tests:
+    name: Relay tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.11'
+      - run: uv venv .venv
+      - run: uv pip install --python .venv/bin/python -e '.[dev]'
+      - run: .venv/bin/python -m pytest
+
+  connector-tests:
+    name: Connector tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: connector
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.11'
+      - run: uv venv .venv
+      - run: uv pip install --python .venv/bin/python -e '.[dev]'
+      - run: .venv/bin/python -m pytest

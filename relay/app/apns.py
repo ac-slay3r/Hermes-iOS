@@ -8,7 +8,7 @@ Environment variables:
     APNS_KEY_CONTENTS     — raw .p8 key text (alternative to KEY_PATH for Docker/Fly)
     APNS_KEY_ID           — 10-char key identifier from Apple
     APNS_TEAM_ID          — 10-char team identifier from Apple
-    APNS_BUNDLE_ID        — default app bundle identifier (io.hermesmobile.HermesMobile)
+    APNS_BUNDLE_ID        — default app bundle identifier (cool.n0thing.hermes)
     APNS_ENVIRONMENT      — default environment: "development" or "production"
 """
 
@@ -54,7 +54,7 @@ class APNsClient:
         key_path: str,
         key_id: str,
         team_id: str,
-        default_bundle_id: str = "io.hermesmobile.HermesMobile",
+        default_bundle_id: str = "cool.n0thing.hermes",
         default_environment: str = "development",
     ):
         self.key_id = key_id

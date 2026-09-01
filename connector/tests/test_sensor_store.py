@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from hermes_mobile_connector.sensor_store import (
     HealthSample,
     LocationReading,
@@ -9,6 +11,10 @@ from hermes_mobile_connector.sensor_store import (
 
 def make_store(tmp_path) -> SensorStore:
     return SensorStore(tmp_path / "sensors.db")
+
+
+def recent_iso(*, hours_ago: float) -> str:
+    return (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def test_store_and_retrieve_current_location(tmp_path):
@@ -33,9 +39,9 @@ def test_current_location_is_overwritten(tmp_path):
 
 def test_location_history_returns_entries(tmp_path):
     store = make_store(tmp_path)
-    store.store_location(LocationReading(latitude=35.0, longitude=139.0, recorded_at="2026-04-01T10:00:00Z"))
-    store.store_location(LocationReading(latitude=36.0, longitude=140.0, recorded_at="2026-04-01T11:00:00Z"))
-    store.store_location(LocationReading(latitude=37.0, longitude=141.0, recorded_at="2026-04-01T12:00:00Z"))
+    store.store_location(LocationReading(latitude=35.0, longitude=139.0, recorded_at=recent_iso(hours_ago=3)))
+    store.store_location(LocationReading(latitude=36.0, longitude=140.0, recorded_at=recent_iso(hours_ago=2)))
+    store.store_location(LocationReading(latitude=37.0, longitude=141.0, recorded_at=recent_iso(hours_ago=1)))
 
     history = store.get_location_history(limit=10)
     assert len(history) == 3
@@ -45,18 +51,18 @@ def test_location_history_returns_entries(tmp_path):
 
 def test_location_history_since_filter(tmp_path):
     store = make_store(tmp_path)
-    store.store_location(LocationReading(latitude=35.0, longitude=139.0, recorded_at="2026-04-01T08:00:00Z"))
-    store.store_location(LocationReading(latitude=36.0, longitude=140.0, recorded_at="2026-04-01T12:00:00Z"))
+    store.store_location(LocationReading(latitude=35.0, longitude=139.0, recorded_at=recent_iso(hours_ago=3)))
+    store.store_location(LocationReading(latitude=36.0, longitude=140.0, recorded_at=recent_iso(hours_ago=1)))
 
-    history = store.get_location_history(since="2026-04-01T10:00:00Z")
+    history = store.get_location_history(since=recent_iso(hours_ago=2))
     assert len(history) == 1
     assert history[0]["latitude"] == 36.0
 
 
 def test_location_history_skips_near_duplicate_foreground_updates(tmp_path):
     store = make_store(tmp_path)
-    store.store_location(LocationReading(latitude=35.0, longitude=139.0, accuracy=15.0, recorded_at="2026-04-01T08:00:00Z"))
-    store.store_location(LocationReading(latitude=35.000001, longitude=139.000001, accuracy=17.0, recorded_at="2026-04-01T08:01:00Z"))
+    store.store_location(LocationReading(latitude=35.0, longitude=139.0, accuracy=15.0, recorded_at=recent_iso(hours_ago=2)))
+    store.store_location(LocationReading(latitude=35.000001, longitude=139.000001, accuracy=17.0, recorded_at=recent_iso(hours_ago=1)))
 
     history = store.get_location_history(limit=10)
     assert len(history) == 1
@@ -91,9 +97,9 @@ def test_health_latest_is_upserted(tmp_path):
 def test_get_health_metric_history(tmp_path):
     store = make_store(tmp_path)
     store.store_health_samples([
-        HealthSample(metric="steps", value=1000, unit="count", start_at="2026-04-01T06:00:00Z"),
-        HealthSample(metric="steps", value=3000, unit="count", start_at="2026-04-01T12:00:00Z"),
-        HealthSample(metric="heart_rate", value=72, unit="bpm", start_at="2026-04-01T12:00:00Z"),
+        HealthSample(metric="steps", value=1000, unit="count", start_at=recent_iso(hours_ago=3)),
+        HealthSample(metric="steps", value=3000, unit="count", start_at=recent_iso(hours_ago=1)),
+        HealthSample(metric="heart_rate", value=72, unit="bpm", start_at=recent_iso(hours_ago=1)),
     ])
 
     steps = store.get_health_metric("steps")
@@ -106,16 +112,19 @@ def test_get_health_metric_history(tmp_path):
 
 def test_windowed_health_samples_collapse_unchanged_snapshots(tmp_path):
     store = make_store(tmp_path)
+    start_at = recent_iso(hours_ago=3)
+    first_end_at = recent_iso(hours_ago=2)
+    latest_end_at = recent_iso(hours_ago=1)
     store.store_health_samples([
-        HealthSample(metric="steps", value=1000, unit="count", start_at="2026-04-01T00:00:00Z", end_at="2026-04-01T10:00:00Z")
+        HealthSample(metric="steps", value=1000, unit="count", start_at=start_at, end_at=first_end_at)
     ])
     store.store_health_samples([
-        HealthSample(metric="steps", value=1000, unit="count", start_at="2026-04-01T00:00:00Z", end_at="2026-04-01T10:05:00Z")
+        HealthSample(metric="steps", value=1000, unit="count", start_at=start_at, end_at=latest_end_at)
     ])
 
     history = store.get_health_metric("steps")
     assert len(history) == 1
-    assert history[0]["end_at"] == "2026-04-01T10:05:00Z"
+    assert history[0]["end_at"] == latest_end_at
 
 
 def test_get_health_summary(tmp_path):
