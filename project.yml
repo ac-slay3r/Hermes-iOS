@@ -90,8 +90,15 @@ targets:
       properties:
         CFBundleDisplayName: Hermes
         CFBundleShortVersionString: "1.0.0"
-        CFBundleVersion: "1"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        "UISupportedInterfaceOrientations~ipad":
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         NSLocationWhenInUseUsageDescription: "Hermes uses your location to provide contextual recommendations and nearby suggestions."
         NSHealthShareUsageDescription: "Hermes reads your health data to offer personalized wellness insights."
         NSHealthUpdateUsageDescription: "Hermes does not write health data, but this permission is required by the system."
@@ -104,7 +111,6 @@ targets:
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
         UIBackgroundModes:
-          - processing
           - location
           - remote-notification
           - audio
