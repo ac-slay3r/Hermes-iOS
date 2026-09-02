@@ -1141,6 +1141,7 @@
 		49ECA932B0044B6D5FF4BB17 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HermesMobileWidgets/HermesMobileWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -1294,9 +1295,11 @@
 		D4CE6CF59A2A0FA086F8CC02 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = HermesMobileWidgets/HermesMobileWidgets.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = VYJS7JMXU5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HermesMobileWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1307,6 +1310,7 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = cool.n0thing.hermes.Widgets;
 				PRODUCT_NAME = HermesMobileWidgets;
+				PROVISIONING_PROFILE_SPECIFIER = cool.n0thing.hermes;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.2;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1335,10 +1339,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HermesMobile/HermesMobile.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = VYJS7JMXU5;
 				INFOPLIST_FILE = HermesMobile/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = HermesMobile;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1348,6 +1352,7 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = cool.n0thing.hermes;
 				PRODUCT_NAME = HermesMobile;
+				PROVISIONING_PROFILE_SPECIFIER = cool.n0thing.hermesZ;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
