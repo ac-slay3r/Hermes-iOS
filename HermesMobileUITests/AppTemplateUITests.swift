@@ -160,6 +160,8 @@ final class HermesMobileUITests: XCTestCase {
         let continueButton = app.buttons["Continue"]
         if continueButton.waitForExistence(timeout: 5) {
             continueButton.tap()
+        } else {
+            print("UITEST_PAIRING_STATE:\n\(app.debugDescription)")
         }
 
         XCTAssertTrue(app.buttons["Open settings"].waitForExistence(timeout: 8))
