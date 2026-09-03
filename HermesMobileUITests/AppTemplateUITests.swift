@@ -27,7 +27,7 @@ final class HermesMobileUITests: XCTestCase {
                 return
             }
 
-            self.setupCode = "ABCD-EFGH"
+            self.setupCode = "ABCD1234"
         }
 
         private static func loadExternalConfiguration() -> ExternalConfiguration? {
