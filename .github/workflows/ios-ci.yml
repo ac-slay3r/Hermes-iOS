@@ -2,7 +2,7 @@ name: iOS CI
 
 on:
   push:
-    branches: [master, main, "bringup/**"]
+    branches: [master, main, "bringup/**", "feat/**"]
   pull_request:
   workflow_dispatch:
 
@@ -29,6 +29,32 @@ jobs:
           -destination 'generic/platform=iOS Simulator'
           CODE_SIGNING_ALLOWED=NO
           clean build
+
+  native-tests:
+    name: Native iOS unit tests
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project HermesMobile.xcodeproj -scheme HermesMobile
+      - name: Select an available iPhone simulator
+        id: simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          UDID="$(xcrun simctl list devices available -j | python3 -c 'import json, sys; devices = json.load(sys.stdin)["devices"]; print(next(device["udid"] for runtime in devices.values() for device in runtime if device.get("isAvailable") and device["name"].startswith("iPhone")))')"
+          test -n "$UDID"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+      - name: Run HermesMobile unit tests
+        run: >-
+          xcodebuild
+          -project HermesMobile.xcodeproj
+          -scheme HermesMobile
+          -configuration Debug
+          -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}'
+          CODE_SIGNING_ALLOWED=NO
+          test
 
   relay-tests:
     name: Relay tests
