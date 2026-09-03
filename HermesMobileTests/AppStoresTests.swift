@@ -1919,4 +1919,12 @@ struct AppStoresTests {
         #expect(AdminCockpitPresentation.recoveryGuidance(relayStatus: "unreachable", hostStatus: "online") == "The relay cannot be reached. Check your network and relay address, then refresh.")
         #expect(AdminCockpitPresentation.recoveryGuidance(relayStatus: "ok", hostStatus: "offline") == "The Hermes Host is offline. Make sure it is running and connected to this relay, then refresh.")
     }
+
+    @Test
+    func adminCockpitPresentationMarksInactiveDevicesUnavailableAndShowsRelayRefreshTime() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        #expect(AdminCockpitPresentation.deviceState(status: "inactive", lastSeenAt: now, now: now) == .unavailable)
+        #expect(AdminCockpitPresentation.relayFreshness(now, now: now) == "Last checked just now")
+    }
 }
