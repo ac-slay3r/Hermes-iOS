@@ -88,7 +88,7 @@ final class AppContainer {
         }
         let syncCoordinator = MockSyncCoordinator()
         let notificationService = LiveNotificationService()
-        let allowMockFallbacks = AppEnvironmentPolicy.currentBuild.allowsEnvironmentOverrides
+        let allowMockFallbacks = AppEnvironmentPolicy.currentBuild.allowsEnvironmentOverrides || usesMockPairingService
         let pairingService: any PairingServiceProtocol
         var activePairingStore: PairingStore?
 
