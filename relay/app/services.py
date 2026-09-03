@@ -141,12 +141,14 @@ def record_audit(
     actor_type: str,
     action: str,
     entity_type: str,
+    user_id: str | None = None,
     actor_id: str | None = None,
     entity_id: str | None = None,
     payload: dict | None = None,
 ) -> None:
     db.add(
         AuditLog(
+            user_id=user_id,
             actor_type=actor_type,
             actor_id=actor_id,
             action=action,

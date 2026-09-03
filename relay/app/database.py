@@ -80,6 +80,13 @@ class Database:
             if "source" not in message_columns:
                 connection.execute(text("ALTER TABLE messages ADD COLUMN source TEXT"))
 
+            audit_columns = {column["name"] for column in inspector.get_columns("audit_log")}
+            if "user_id" not in audit_columns:
+                connection.execute(text("ALTER TABLE audit_log ADD COLUMN user_id TEXT"))
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_audit_log_user_created ON audit_log (user_id, created_at)")
+            )
+
             if "attachments_data" not in message_columns:
                 connection.execute(text("ALTER TABLE messages ADD COLUMN attachments_data JSON"))
 

@@ -42,6 +42,25 @@ def register_device(client: TestClient):
     return response.json()["data"]
 
 
+def test_admin_audit_lists_only_current_users_events_without_sensitive_payload(tmp_path):
+    with build_client(tmp_path) as client:
+        register_data = register_device(client)
+        access_token = register_data["auth"]["accessToken"]
+
+        response = client.get(
+            "/v1/admin/audit",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        assert response.status_code == 200
+        events = response.json()["data"]["events"]
+        assert events[0]["action"] == "device.register"
+        assert events[0]["entityType"] == "device"
+        assert events[0]["actorType"] == "app"
+        assert events[0]["occurredAt"]
+        assert "payload" not in events[0]
+
+
 def test_device_register_session_and_refresh(tmp_path):
     with build_client(tmp_path) as client:
         register_data = register_device(client)

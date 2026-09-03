@@ -22,7 +22,7 @@ from .apns import PushResult, create_apns_client
 from .config import Settings
 from .database import Database
 from .hermes_adapter import build_hermes_adapter
-from .models import Conversation, HermesHost, Message, PushRegistration
+from .models import AuditLog, Conversation, HermesHost, Message, PushRegistration
 from .pairing import HostSetupCodePayload, format_phone_pairing_code, build_host_setup_code
 from .rate_limit import PhonePairingRateLimiter
 from .schemas import (
@@ -534,6 +534,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/v1/admin/audit")
+    def admin_audit(
+        auth: AuthContext = Depends(get_auth_context),
+        db: Session = Depends(get_db),
+    ) -> dict:
+        events = db.scalars(
+            select(AuditLog)
+            .where(AuditLog.user_id == auth.user.id)
+            .order_by(AuditLog.created_at.desc())
+            .limit(100)
+        ).all()
+        return success(
+            {
+                "events": [
+                    {
+                        "id": event.id,
+                        "actorType": event.actor_type,
+                        "action": event.action,
+                        "entityType": event.entity_type,
+                        "entityId": event.entity_id,
+                        "occurredAt": event.created_at,
+                    }
+                    for event in events
+                ]
+            }
+        )
+
     @app.post("/v1/connector/setup")
     def connector_setup(
         payload: ConnectorSetupRequest,
@@ -757,6 +784,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             action="device.register",
             entity_type="device",
             entity_id=device.id,
+            user_id=user.id,
             payload={"installationId": str(payload.device.installationId)},
         )
         db.commit()
