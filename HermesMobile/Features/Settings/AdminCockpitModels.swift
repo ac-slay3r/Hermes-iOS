@@ -54,9 +54,18 @@ enum AdminCockpitPresentation {
         return "Last seen \(Int(elapsed / 86400))d ago"
     }
 
+    static func relayFreshness(_ refreshedAt: Date?, now: Date = .now) -> String {
+        guard let refreshedAt else { return "Last checked unavailable" }
+        let elapsed = max(0, now.timeIntervalSince(refreshedAt))
+        if elapsed < 60 { return "Last checked just now" }
+        if elapsed < 60 * 60 { return "Last checked \(Int(elapsed / 60))m ago" }
+        if elapsed < 24 * 60 * 60 { return "Last checked \(Int(elapsed / 3600))h ago" }
+        return "Last checked \(Int(elapsed / 86400))d ago"
+    }
+
     static func deviceState(status: String, lastSeenAt: Date?, now: Date = .now) -> AdminCockpitDeviceState {
         let normalized = status.lowercased()
-        if ["unavailable", "offline", "unreachable", "revoked"].contains(normalized) || lastSeenAt == nil {
+        if ["inactive", "unavailable", "offline", "unreachable", "revoked"].contains(normalized) || lastSeenAt == nil {
             return .unavailable
         }
         if let lastSeenAt, now.timeIntervalSince(lastSeenAt) >= staleAfter {

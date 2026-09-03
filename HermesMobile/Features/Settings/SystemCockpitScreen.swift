@@ -8,6 +8,8 @@ struct SystemCockpitScreen: View {
     @State private var status: AdminCockpitStatus?
     @State private var auditEvents: [AdminCockpitAuditEvent] = []
     @State private var errorMessage: String?
+    @State private var auditErrorMessage: String?
+    @State private var lastRefreshedAt: Date?
     @State private var isRefreshing = false
 
     var body: some View {
@@ -85,7 +87,7 @@ struct SystemCockpitScreen: View {
                     title: "Relay",
                     status: AdminCockpitPresentation.title(for: status.relay.status),
                     color: status.relay.status.lowercased() == "ok" ? .green : .orange,
-                    detail: status.relay.status.lowercased() == "ok" ? "Reachable" : "Unavailable"
+                    detail: AdminCockpitPresentation.relayFreshness(lastRefreshedAt)
                 )
                 divider
                 statusRow(
@@ -144,6 +146,11 @@ struct SystemCockpitScreen: View {
     private var auditTimeline: some View {
         SettingsSectionView(title: "Private audit timeline") {
             VStack(alignment: .leading, spacing: Design.Spacing.sm) {
+                if let auditErrorMessage {
+                    Text(auditErrorMessage)
+                        .font(Design.Typography.caption)
+                        .foregroundStyle(.orange)
+                }
                 if auditEvents.isEmpty {
                     Text("No audit metadata is available yet.")
                         .font(Design.Typography.callout)
@@ -256,22 +263,36 @@ struct SystemCockpitScreen: View {
             status = nil
             auditEvents = []
             errorMessage = nil
+            auditErrorMessage = nil
+            lastRefreshedAt = nil
             return
         }
 
         isRefreshing = true
         defer { isRefreshing = false }
+        let client = RelayAPIClient(baseURLProvider: { relayURL })
+        let token = await sessionStore.currentAccessToken()
+
         do {
-            let client = RelayAPIClient(baseURLProvider: { relayURL })
-            let token = await sessionStore.currentAccessToken()
             status = try await client.get(path: "admin/status", accessToken: token)
-            let audit: AdminCockpitAuditResponse = try await client.get(path: "admin/audit", accessToken: token)
-            auditEvents = audit.events
+            lastRefreshedAt = .now
             errorMessage = nil
         } catch {
             status = nil
             auditEvents = []
             errorMessage = "The relay cannot be reached. Check your network and relay connection, then refresh."
+            auditErrorMessage = nil
+            lastRefreshedAt = nil
+            return
+        }
+
+        do {
+            let audit: AdminCockpitAuditResponse = try await client.get(path: "admin/audit", accessToken: token)
+            auditEvents = audit.events
+            auditErrorMessage = nil
+        } catch {
+            auditEvents = []
+            auditErrorMessage = "Audit metadata is unavailable. System status remains current."
         }
     }
 }
