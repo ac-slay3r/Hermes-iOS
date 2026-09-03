@@ -61,6 +61,30 @@ def test_admin_audit_lists_only_current_users_events_without_sensitive_payload(t
         assert "payload" not in events[0]
 
 
+def test_admin_status_reports_only_authenticated_users_host_and_devices(tmp_path):
+    with build_client(tmp_path) as client:
+        register_data = register_device(client)
+        access_token = register_data["auth"]["accessToken"]
+
+        response = client.get(
+            "/v1/admin/status",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["relay"]["status"] == "ok"
+        assert data["host"] == {"status": "not_connected", "lastSeenAt": None}
+        assert len(data["devices"]) == 1
+        device = data["devices"][0]
+        assert device["id"] == register_data["deviceId"]
+        assert device["name"] == "Test iPhone"
+        assert device["platform"] == "ios"
+        assert device["status"] == "active"
+        assert device["lastSeenAt"]
+        assert "installationId" not in device
+
+
 def test_device_register_session_and_refresh(tmp_path):
     with build_client(tmp_path) as client:
         register_data = register_device(client)

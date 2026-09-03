@@ -1,5 +1,17 @@
 import SwiftUI
 
+private struct AdminCockpitStatus: Decodable {
+    struct Relay: Decodable { let status: String }
+    struct Host: Decodable { let status: String; let lastSeenAt: Date? }
+    struct Device: Decodable { let id: UUID; let name: String; let platform: String; let status: String; let lastSeenAt: Date? }
+    struct AuditEvent: Decodable { let id: UUID; let actorType: String; let action: String; let entityType: String; let entityId: String?; let occurredAt: Date }
+    struct AuditResponse: Decodable { let events: [AuditEvent] }
+
+    let relay: Relay
+    let host: Host
+    let devices: [Device]
+}
+
 struct SettingsScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -9,6 +21,9 @@ struct SettingsScreen: View {
     @Environment(PermissionsStore.self) private var permissionsStore
     @Environment(SettingsStore.self) private var settingsStore
     @Environment(TabRouter.self) private var router
+    @State private var adminStatus: AdminCockpitStatus?
+    @State private var adminAuditEvents: [AdminCockpitStatus.AuditEvent] = []
+    @State private var adminStatusError: String?
 
     var body: some View {
         ZStack {
@@ -18,6 +33,7 @@ struct SettingsScreen: View {
             ScrollView {
                 VStack(spacing: Design.Spacing.lg) {
                     connectionSection
+                    adminCockpitSection
                     relaySection
                     if settingsStore.availableEnvironments.count > 1 {
                         environmentSection
@@ -45,6 +61,7 @@ struct SettingsScreen: View {
         .task {
             await hostStore.refresh()
             await permissionsStore.reloadCapabilities()
+            await refreshAdminCockpit()
         }
     }
 
@@ -87,6 +104,104 @@ struct SettingsScreen: View {
                     isOn: autoConnectBinding
                 )
             }
+        }
+    }
+
+    // MARK: - Admin Cockpit
+
+    private var adminCockpitSection: some View {
+        SettingsSectionView(title: "System") {
+            VStack(alignment: .leading, spacing: Design.Spacing.sm) {
+                if let adminStatus {
+                    settingsRow(
+                        icon: adminStatus.relay.status == "ok" ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                        iconColor: adminStatus.relay.status == "ok" ? .green : .orange,
+                        title: "Relay",
+                        value: adminStatus.relay.status == "ok" ? "Online" : adminStatus.relay.status.capitalized
+                    )
+                    sectionDivider
+                    settingsRow(
+                        icon: "desktopcomputer",
+                        iconColor: adminStatus.host.status == "online" ? .green : .orange,
+                        title: "Hermes Host",
+                        value: adminStatus.host.status.replacingOccurrences(of: "_", with: " ").capitalized
+                    )
+                    sectionDivider
+                    settingsRow(
+                        icon: "iphone",
+                        iconColor: .blue,
+                        title: "Paired Devices",
+                        value: "\(adminStatus.devices.count)"
+                    )
+                    if !adminAuditEvents.isEmpty {
+                        sectionDivider
+                        Text("Recent Audit")
+                            .font(Design.Typography.caption)
+                            .foregroundStyle(Design.Colors.secondaryForeground)
+                        ForEach(adminAuditEvents.prefix(5), id: \.id) { event in
+                            HStack(alignment: .firstTextBaseline, spacing: Design.Spacing.sm) {
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Design.Colors.secondaryForeground)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(event.action.replacingOccurrences(of: ".", with: " ").capitalized)
+                                        .font(Design.Typography.caption)
+                                        .foregroundStyle(Design.Colors.foreground)
+                                    Text(event.occurredAt, style: .relative)
+                                        .font(Design.Typography.caption)
+                                        .foregroundStyle(Design.Colors.secondaryForeground)
+                                }
+                            }
+                        }
+                    }
+                } else if let adminStatusError {
+                    settingsRow(
+                        icon: "exclamationmark.triangle.fill",
+                        iconColor: .orange,
+                        title: "System Status",
+                        value: "Unavailable"
+                    )
+                    Text(adminStatusError)
+                        .font(Design.Typography.caption)
+                        .foregroundStyle(Design.Colors.secondaryForeground)
+                } else {
+                    settingsRow(icon: "arrow.triangle.2.circlepath", iconColor: .secondary, title: "System Status", value: "Checking")
+                }
+
+                Button("Refresh System Status") {
+                    Task { await refreshAdminCockpit() }
+                }
+                .font(Design.Typography.caption)
+                .foregroundStyle(Design.Brand.accent)
+                .accessibilityIdentifier("settings.adminCockpit.refresh")
+            }
+        }
+    }
+
+    private func refreshAdminCockpit() async {
+        guard pairingStore.isPaired,
+              let relayURL = pairingStore.pairedRelayConfiguration?.baseURLString else {
+            adminStatus = nil
+            adminStatusError = nil
+            return
+        }
+
+        do {
+            let client = RelayAPIClient(baseURLProvider: { relayURL })
+            let token = await sessionStore.currentAccessToken()
+            adminStatus = try await client.get(
+                path: "admin/status",
+                accessToken: token
+            )
+            let audit: AdminCockpitStatus.AuditResponse = try await client.get(
+                path: "admin/audit",
+                accessToken: token
+            )
+            adminAuditEvents = audit.events
+            adminStatusError = nil
+        } catch {
+            adminStatus = nil
+            adminStatusError = error.localizedDescription
         }
     }
 

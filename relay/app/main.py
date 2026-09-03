@@ -22,7 +22,7 @@ from .apns import PushResult, create_apns_client
 from .config import Settings
 from .database import Database
 from .hermes_adapter import build_hermes_adapter
-from .models import AuditLog, Conversation, HermesHost, Message, PushRegistration
+from .models import AuditLog, Conversation, Device, HermesHost, Message, PushRegistration
 from .pairing import HostSetupCodePayload, format_phone_pairing_code, build_host_setup_code
 from .rate_limit import PhonePairingRateLimiter
 from .schemas import (
@@ -531,6 +531,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "service": request_settings.service_name,
                 "version": request_settings.version,
                 "environment": request_settings.environment,
+            }
+        )
+
+    @app.get("/v1/admin/status")
+    def admin_status(
+        auth: AuthContext = Depends(get_auth_context),
+        db: Session = Depends(get_db),
+        request_settings: Settings = Depends(get_settings),
+    ) -> dict:
+        host = current_hermes_host_for_user(db, user_id=auth.user.id)
+        devices = db.scalars(
+            select(Device)
+            .where(Device.user_id == auth.user.id)
+            .order_by(Device.created_at.asc())
+        ).all()
+        host_status = "not_connected"
+        if host is not None:
+            host_status = "online" if hermes_host_is_online(db, host=host, settings=request_settings) else "offline"
+
+        return success(
+            {
+                "relay": {"status": "ok"},
+                "host": {
+                    "status": host_status,
+                    "lastSeenAt": host.last_seen_at if host else None,
+                },
+                "devices": [
+                    {
+                        "id": device.id,
+                        "name": device.device_name or "Unnamed device",
+                        "platform": device.platform,
+                        "status": "active" if device.is_active else "inactive",
+                        "lastSeenAt": device.last_seen_at,
+                    }
+                    for device in devices
+                ],
             }
         )
 
