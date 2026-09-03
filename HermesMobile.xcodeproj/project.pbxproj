@@ -142,6 +142,8 @@
 		DB13D240C5F7B8919C8FF881 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0220D103178EF414928CFCA7 /* ChatStore.swift */; };
 		DEA375A9D664BF1F4E2E5F60 /* StreamingUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D413F0B4D4CB0A7613A4A0E6 /* StreamingUpdate.swift */; };
 		E515B2B803409DD8B53A65A2 /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7745C09181860B8818753B91 /* SettingsScreen.swift */; };
+		A1C0C0A10000000000000001 /* AdminCockpitModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0C0A10000000000000003 /* AdminCockpitModels.swift */; };
+		A1C0C0A10000000000000002 /* SystemCockpitScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0C0A10000000000000004 /* SystemCockpitScreen.swift */; };
 		E59F127A0B1337B11B4C597C /* MarkdownParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 070BFE52E0723E54873A512C /* MarkdownParser.swift */; };
 		E676CA3A6B55C3C7165ECCF9 /* StatusIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5665A55DF2AA6C863DF0B5C3 /* StatusIndicator.swift */; };
 		E67A50E52CF031063DC18889 /* SensorUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3378BC22D9BB239E8E908A2D /* SensorUploadService.swift */; };
@@ -275,6 +277,8 @@
 		70A40E5EA51E036A1BD1C3AE /* MockMediaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockMediaService.swift; sourceTree = "<group>"; };
 		73518DAA2B5C3318F623C266 /* SessionBootstrapServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionBootstrapServiceProtocol.swift; sourceTree = "<group>"; };
 		7745C09181860B8818753B91 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
+		A1C0C0A10000000000000003 /* AdminCockpitModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminCockpitModels.swift; sourceTree = "<group>"; };
+		A1C0C0A10000000000000004 /* SystemCockpitScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemCockpitScreen.swift; sourceTree = "<group>"; };
 		77889D1F0949BA7D30FE3A76 /* RelayAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayAPIClient.swift; sourceTree = "<group>"; };
 		8041E71D6A63A672AC422F70 /* AppPersistenceStoreProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPersistenceStoreProtocol.swift; sourceTree = "<group>"; };
 		873DE955C6B80F27581DA9B1 /* ConnectHermesHostScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectHermesHostScreen.swift; sourceTree = "<group>"; };
@@ -664,9 +668,11 @@
 		D6A1379DF0671EEBA650BA12 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				A1C0C0A10000000000000003 /* AdminCockpitModels.swift */,
 				873DE955C6B80F27581DA9B1 /* ConnectHermesHostScreen.swift */,
 				7745C09181860B8818753B91 /* SettingsScreen.swift */,
 				B38CB9F28FDEBB0ED738F6DE /* SettingsSectionView.swift */,
+				A1C0C0A10000000000000004 /* SystemCockpitScreen.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -1022,6 +1028,8 @@
 				AB572736AB8CAC0AE51A2172 /* SessionBootstrapResponse.swift in Sources */,
 				3652BC8BBD34B2AB22476C7C /* SessionBootstrapServiceProtocol.swift in Sources */,
 				E515B2B803409DD8B53A65A2 /* SettingsScreen.swift in Sources */,
+				A1C0C0A10000000000000001 /* AdminCockpitModels.swift in Sources */,
+				A1C0C0A10000000000000002 /* SystemCockpitScreen.swift in Sources */,
 				6F7299596D6896FC4DCDD54F /* SettingsSectionView.swift in Sources */,
 				A5A396EDE71010521DDB83DC /* SettingsStore.swift in Sources */,
 				63CB41A549C6920B0E65ED09 /* SetupCodeScannerView.swift in Sources */,

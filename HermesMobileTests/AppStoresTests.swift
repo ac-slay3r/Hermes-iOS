@@ -1903,4 +1903,20 @@ struct AppStoresTests {
         #expect(ChatStore.inferredContextWindow(for: "gpt-5.4-mini") == 128_000)
         #expect(ChatStore.inferredContextWindow(for: "claude-sonnet-4.6") == 1_000_000)
     }
+
+    @Test
+    func adminCockpitPresentationMarksStaleDevicesAndUsesRelativeFreshness() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let lastSeen = now.addingTimeInterval(-11 * 60)
+
+        #expect(AdminCockpitPresentation.freshness(lastSeen, now: now) == "Last seen 11m ago")
+        #expect(AdminCockpitPresentation.deviceState(status: "active", lastSeenAt: lastSeen, now: now) == .stale)
+        #expect(AdminCockpitPresentation.deviceState(status: "unavailable", lastSeenAt: now, now: now) == .unavailable)
+    }
+
+    @Test
+    func adminCockpitPresentationProvidesSafeRecoveryForRelayAndHostFailures() {
+        #expect(AdminCockpitPresentation.recoveryGuidance(relayStatus: "unreachable", hostStatus: "online") == "The relay cannot be reached. Check your network and relay address, then refresh.")
+        #expect(AdminCockpitPresentation.recoveryGuidance(relayStatus: "ok", hostStatus: "offline") == "The Hermes Host is offline. Make sure it is running and connected to this relay, then refresh.")
+    }
 }
