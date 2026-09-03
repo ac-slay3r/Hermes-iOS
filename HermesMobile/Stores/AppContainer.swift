@@ -76,14 +76,19 @@ final class AppContainer {
         let secureStore = KeychainSecureStore(
             serviceName: processEnvironment["UITEST_KEYCHAIN_SERVICE"] ?? "cool.n0thing.hermes.session"
         )
+        let usesMockPairingService = processEnvironment["UITEST_PAIRING_MODE"] == "mock"
         let settingsStore = SettingsStore(
             persistence: persistence,
             buildConfiguration: buildConfiguration
         )
+        if usesMockPairingService {
+            settingsStore.settings.relayConfiguration = RelayConfiguration(
+                customRelayBaseURL: "https://relay.test/v1"
+            )
+        }
         let syncCoordinator = MockSyncCoordinator()
         let notificationService = LiveNotificationService()
         let allowMockFallbacks = AppEnvironmentPolicy.currentBuild.allowsEnvironmentOverrides
-        let usesMockPairingService = processEnvironment["UITEST_PAIRING_MODE"] == "mock"
         let pairingService: any PairingServiceProtocol
         var activePairingStore: PairingStore?
 
