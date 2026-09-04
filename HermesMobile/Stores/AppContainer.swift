@@ -104,17 +104,25 @@ final class AppContainer {
                 ?? ""
         }
 
-        let sessionBootstrapService = ResilientSessionBootstrapService(
-            primary: LiveSessionBootstrapService(apiClient: apiClient),
-            fallback: MockSessionBootstrapService(),
-            allowsFallback: { allowMockFallbacks && (activePairingStore?.isPaired != true || usesMockPairingService) }
-        )
+        let sessionBootstrapService: any SessionBootstrapServiceProtocol
+        let inboxService: any InboxServiceProtocol
+        if usesMockPairingService {
+            sessionBootstrapService = MockSessionBootstrapService()
+            inboxService = MockInboxService()
+        } else {
+            sessionBootstrapService = ResilientSessionBootstrapService(
+                primary: LiveSessionBootstrapService(apiClient: apiClient),
+                fallback: MockSessionBootstrapService(),
+                allowsFallback: { allowMockFallbacks && activePairingStore?.isPaired != true }
+            )
 
-        let inboxService = ResilientInboxService(
-            primary: LiveInboxService(apiClient: apiClient),
-            fallback: MockInboxService(),
-            allowsFallback: { allowMockFallbacks && (activePairingStore?.isPaired != true || usesMockPairingService) }
-        )
+            inboxService = ResilientInboxService(
+                primary: LiveInboxService(apiClient: apiClient),
+                fallback: MockInboxService(),
+                allowsFallback: { allowMockFallbacks && activePairingStore?.isPaired != true }
+            )
+
+        }
 
         let sessionStore = AppSessionStore(
             bootstrapService: sessionBootstrapService,
@@ -152,19 +160,24 @@ final class AppContainer {
             accessTokenProvider: { await sessionStore.currentAccessToken() }
         )
 
-        let hermesClient = ResilientHermesClient(
-            primary: LiveHermesClient(
-                apiClient: apiClient,
-                accessTokenProvider: { await sessionStore.currentAccessToken() },
-                accessTokenRefresher: {
-                    await sessionStore.refreshAccessTokenIfNeeded()
-                    return await sessionStore.currentAccessToken()
-                },
-                allowDemoFallback: allowMockFallbacks && usesMockPairingService
-            ),
-            fallback: MockHermesClient(),
-            allowsFallback: { allowMockFallbacks && (activePairingStore?.isPaired != true || usesMockPairingService) }
-        )
+        let hermesClient: any HermesClientProtocol
+        if usesMockPairingService {
+            hermesClient = MockHermesClient()
+        } else {
+            hermesClient = ResilientHermesClient(
+                primary: LiveHermesClient(
+                    apiClient: apiClient,
+                    accessTokenProvider: { await sessionStore.currentAccessToken() },
+                    accessTokenRefresher: {
+                        await sessionStore.refreshAccessTokenIfNeeded()
+                        return await sessionStore.currentAccessToken()
+                    },
+                    allowDemoFallback: false
+                ),
+                fallback: MockHermesClient(),
+                allowsFallback: { allowMockFallbacks && activePairingStore?.isPaired != true }
+            )
+        }
 
         let liveLocationService = LiveLocationService()
         liveLocationService.updateSyncPreference(settingsStore.settings.locationSyncPreference)
