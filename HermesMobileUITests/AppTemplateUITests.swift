@@ -27,7 +27,7 @@ final class HermesMobileUITests: XCTestCase {
                 return
             }
 
-            self.setupCode = "ABCD1234"
+            self.setupCode = "ABCD2345"
         }
 
         private static func loadExternalConfiguration() -> ExternalConfiguration? {
@@ -154,8 +154,21 @@ final class HermesMobileUITests: XCTestCase {
         let setupCodeField = app.textFields["Setup code"]
         XCTAssertTrue(setupCodeField.waitForExistence(timeout: 5))
         setupCodeField.tap()
-        setupCodeField.typeText(setupCode)
-        app.buttons["Connect Hermes"].tap()
+        let normalizedCode = setupCode.replacingOccurrences(of: "-", with: "")
+        let prefix = String(normalizedCode.prefix(4))
+        let suffix = String(normalizedCode.dropFirst(4))
+        XCTAssertEqual(prefix.count, 4, "UI-test pairing codes require an eight-character mock value")
+        XCTAssertFalse(suffix.isEmpty, "UI-test pairing codes require an eight-character mock value")
+
+        setupCodeField.typeText(prefix)
+        setupCodeField.typeText(String(suffix.prefix(1)))
+        XCTAssertEqual(setupCodeField.value as? String, "\(prefix)-\(suffix.prefix(1))")
+        setupCodeField.typeText(String(suffix.dropFirst()))
+        XCTAssertEqual(setupCodeField.value as? String, "\(prefix)-\(suffix)")
+
+        let connectButton = app.buttons["Connect Hermes"]
+        XCTAssertTrue(connectButton.isEnabled, "Valid mock pairing code must enable Connect Hermes")
+        connectButton.tap()
 
         let continueButton = app.buttons["Continue"]
         if continueButton.waitForExistence(timeout: 5) {
