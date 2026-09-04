@@ -1634,6 +1634,7 @@ struct AppStoresTests {
             pairingService: RecordingPairingService(),
             sessionStore: sessionStore,
             persistence: persistence,
+            onboardingDefaults: defaults,
             environmentProvider: { .production },
             relayBaseURLProvider: { "https://relay.example.test/v1" }
         )
@@ -1749,6 +1750,7 @@ struct AppStoresTests {
             pairingService: RecordingPairingService(),
             sessionStore: sessionStore,
             persistence: persistence,
+            onboardingDefaults: defaults,
             environmentProvider: { .production },
             relayBaseURLProvider: { "https://relay.example.test/v1" }
         )

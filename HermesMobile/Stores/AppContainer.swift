@@ -78,7 +78,7 @@ final class AppContainer {
         let buildConfiguration = AppBuildConfiguration.current()
         let usesMockPairingService = processEnvironment["UITEST_PAIRING_MODE"] == "mock"
         let secureStore: any SecureStoreProtocol = if usesMockPairingService {
-            MockSecureStore()
+            MockSecureStore(defaults: resolvedDefaults)
         } else {
             KeychainSecureStore(
                 serviceName: processEnvironment["UITEST_KEYCHAIN_SERVICE"] ?? "cool.n0thing.hermes.session"
@@ -144,6 +144,7 @@ final class AppContainer {
             pairingService: pairingService,
             sessionStore: sessionStore,
             persistence: persistence,
+            onboardingDefaults: resolvedDefaults,
             environmentProvider: { settingsStore.settings.environment },
             relayBaseURLProvider: { settingsStore.settings.relayConfiguration.activeBaseURLString }
         )

@@ -14,6 +14,7 @@ final class PairingStore {
     private let pairingService: any PairingServiceProtocol
     private let sessionStore: AppSessionStore
     private let persistence: any AppPersistenceStoreProtocol
+    private let onboardingDefaults: UserDefaults
     private let environmentProvider: @MainActor () -> AppEnvironment
     private let relayBaseURLProvider: @MainActor () -> String?
 
@@ -21,16 +22,18 @@ final class PairingStore {
         pairingService: any PairingServiceProtocol,
         sessionStore: AppSessionStore,
         persistence: any AppPersistenceStoreProtocol,
+        onboardingDefaults: UserDefaults,
         environmentProvider: @escaping @MainActor () -> AppEnvironment,
         relayBaseURLProvider: @escaping @MainActor () -> String?
     ) {
         self.pairingService = pairingService
         self.sessionStore = sessionStore
         self.persistence = persistence
+        self.onboardingDefaults = onboardingDefaults
         self.environmentProvider = environmentProvider
         self.relayBaseURLProvider = relayBaseURLProvider
         self.pairedRelayConfiguration = persistence.loadPairedRelayConfiguration()
-        self.needsPermissionsOnboarding = UserDefaults.standard.bool(forKey: Self.onboardingKey)
+        self.needsPermissionsOnboarding = onboardingDefaults.bool(forKey: Self.onboardingKey)
     }
 
     var isPaired: Bool {
@@ -102,6 +105,6 @@ final class PairingStore {
 
     private func setNeedsPermissionsOnboarding(_ value: Bool) {
         needsPermissionsOnboarding = value
-        UserDefaults.standard.set(value, forKey: Self.onboardingKey)
+        onboardingDefaults.set(value, forKey: Self.onboardingKey)
     }
 }
