@@ -62,7 +62,6 @@ final class HermesMobileUITests: XCTestCase {
         let context = UITestLaunchContext()
         let app = makeApp(context: context)
         let message = "UI live chat smoke test"
-        let chatResponseTimeout: TimeInterval = context.pairingMode == "mock" ? 20 : 60
 
         app.launch()
         completePairing(in: app, setupCode: context.setupCode)
@@ -74,7 +73,10 @@ final class HermesMobileUITests: XCTestCase {
         input.typeText(message)
         app.buttons["Send message"].tap()
 
-        XCTAssertTrue(app.staticTexts[message].waitForExistence(timeout: chatResponseTimeout))
+        let submittedMessage = app.otherElements
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "You: \(message)."))
+            .firstMatch
+        XCTAssertTrue(submittedMessage.waitForExistence(timeout: 5))
     }
 
     @MainActor

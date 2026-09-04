@@ -1587,22 +1587,31 @@ struct AppStoresTests {
     }
 
     @Test @MainActor
-    func mockFactoryPairingKeepsSessionAndInitializesWithoutRelay() async throws {
+    func mockFactoryPairingPersistsSessionAcrossRelaunch() async throws {
         let suiteName = "mock-factory-pairing-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
-        let container = AppContainer.makeDefault(
+        let mockEnvironment = ["UITEST_PAIRING_MODE": "mock"]
+        let firstContainer = AppContainer.makeDefault(
             defaults: defaults,
-            processEnvironment: ["UITEST_PAIRING_MODE": "mock"]
+            processEnvironment: mockEnvironment
         )
 
-        #expect(await container.pairingStore.pair(using: "ABCD2345"))
-        #expect(await container.sessionStore.currentAccessToken() != nil)
+        #expect(await firstContainer.pairingStore.pair(using: "ABCD2345"))
+        firstContainer.pairingStore.completePermissionsOnboarding()
 
-        await container.initialize()
+        let relaunchedContainer = AppContainer.makeDefault(
+            defaults: defaults,
+            processEnvironment: mockEnvironment
+        )
+        #expect(relaunchedContainer.pairingStore.isPaired)
+        #expect(relaunchedContainer.pairingStore.needsPermissionsOnboarding == false)
+        #expect(await relaunchedContainer.sessionStore.currentAccessToken() == "mock-paired-access-token-ABCD2345")
 
-        #expect(container.pairingStore.isPaired)
-        #expect(container.sessionStore.state.connectionStatus == .connected)
+        await relaunchedContainer.initialize()
+
+        #expect(relaunchedContainer.pairingStore.isPaired)
+        #expect(relaunchedContainer.sessionStore.state.connectionStatus == .connected)
     }
 
     @Test @MainActor
