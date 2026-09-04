@@ -1587,6 +1587,25 @@ struct AppStoresTests {
     }
 
     @Test @MainActor
+    func mockFactoryPairingKeepsSessionAndInitializesWithoutRelay() async throws {
+        let suiteName = "mock-factory-pairing-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let container = AppContainer.makeDefault(
+            defaults: defaults,
+            processEnvironment: ["UITEST_PAIRING_MODE": "mock"]
+        )
+
+        #expect(await container.pairingStore.pair(using: "ABCD2345"))
+        #expect(await container.sessionStore.currentAccessToken() != nil)
+
+        await container.initialize()
+
+        #expect(container.pairingStore.isPaired)
+        #expect(container.sessionStore.state.connectionStatus == .connected)
+    }
+
+    @Test @MainActor
     func pairingStorePersistsRelayConfigurationAndTokens() async throws {
         let suiteName = "pairing-store-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
