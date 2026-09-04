@@ -142,6 +142,7 @@ struct PermissionsOnboardingScreen: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, Design.Spacing.sm)
         }
+        .accessibilityIdentifier("onboarding.continue")
         .background(Design.Brand.accent)
         .clipShape(RoundedRectangle(cornerRadius: Design.CornerRadius.lg))
         .padding(.horizontal, Design.Spacing.md)
