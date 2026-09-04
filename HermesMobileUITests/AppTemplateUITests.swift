@@ -170,14 +170,11 @@ final class HermesMobileUITests: XCTestCase {
         XCTAssertTrue(connectButton.isEnabled, "Valid mock pairing code must enable Connect Hermes")
         connectButton.tap()
 
-        let continueButton = app.buttons["Continue"]
-        if continueButton.waitForExistence(timeout: 5) {
-            continueButton.tap()
-        } else {
-            print("UITEST_PAIRING_STATE:\n\(app.debugDescription)")
-        }
+        let continueButton = app.buttons["onboarding.continue"]
+        XCTAssertTrue(continueButton.waitForExistence(timeout: 5))
+        continueButton.tap()
 
-        XCTAssertTrue(app.buttons["Open settings"].waitForExistence(timeout: 8))
+        XCTAssertTrue(composerInput(in: app).waitForExistence(timeout: 8))
     }
 
     @MainActor
