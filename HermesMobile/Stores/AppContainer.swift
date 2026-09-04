@@ -18,6 +18,7 @@ final class AppContainer {
     let sensorUploadService: SensorUploadService?
     private let apiClient: RelayAPIClient?
     private let notificationService: (any NotificationServiceProtocol)?
+    private let usesMockPairingService: Bool
     private var isInitialized = false
     private var lastCommandCatalogRefreshAt: Date?
     private var lastKnownHostOnline = false
@@ -35,7 +36,8 @@ final class AppContainer {
         talkStore: TalkStore,
         sensorUploadService: SensorUploadService? = nil,
         apiClient: RelayAPIClient? = nil,
-        notificationService: (any NotificationServiceProtocol)? = nil
+        notificationService: (any NotificationServiceProtocol)? = nil,
+        usesMockPairingService: Bool = false
     ) {
         self.sessionStore = sessionStore
         self.pairingStore = pairingStore
@@ -48,6 +50,7 @@ final class AppContainer {
         self.sensorUploadService = sensorUploadService
         self.apiClient = apiClient
         self.notificationService = notificationService
+        self.usesMockPairingService = usesMockPairingService
     }
 
     static func sharedDefault() -> AppContainer {
@@ -73,10 +76,14 @@ final class AppContainer {
 
         let persistence = UserDefaultsAppPersistenceStore(defaults: resolvedDefaults)
         let buildConfiguration = AppBuildConfiguration.current()
-        let secureStore = KeychainSecureStore(
-            serviceName: processEnvironment["UITEST_KEYCHAIN_SERVICE"] ?? "cool.n0thing.hermes.session"
-        )
         let usesMockPairingService = processEnvironment["UITEST_PAIRING_MODE"] == "mock"
+        let secureStore: any SecureStoreProtocol = if usesMockPairingService {
+            MockSecureStore()
+        } else {
+            KeychainSecureStore(
+                serviceName: processEnvironment["UITEST_KEYCHAIN_SERVICE"] ?? "cool.n0thing.hermes.session"
+            )
+        }
         let settingsStore = SettingsStore(
             persistence: persistence,
             buildConfiguration: buildConfiguration
@@ -231,7 +238,8 @@ final class AppContainer {
             talkStore: TalkStore(voiceService: voiceService),
             sensorUploadService: sensorUploadService,
             apiClient: apiClient,
-            notificationService: notificationService
+            notificationService: notificationService,
+            usesMockPairingService: usesMockPairingService
         )
 
         let refreshUnpairedRelayContext: @MainActor () async -> Void = { [weak sessionStore, weak container] in
@@ -466,6 +474,7 @@ final class AppContainer {
     /// Fetches the dynamic slash command catalog from the connected Hermes host.
     /// Merges built-in commands, gateway commands, skills, and personality options.
     func refreshCommandCatalog(force: Bool = false) async {
+        guard !usesMockPairingService else { return }
         if !force,
            let lastCommandCatalogRefreshAt,
            Date().timeIntervalSince(lastCommandCatalogRefreshAt) < Self.commandCatalogRefreshInterval {
