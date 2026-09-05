@@ -21,7 +21,7 @@ def normalize_database_url(database_url: str) -> str:
 class Settings:
     service_name: str = "hermes-mobile-relay"
     version: str = "0.1.0"
-    environment: str = "development"
+    environment: str = "production"
     public_base_url: str = "http://127.0.0.1:8000/v1"
     database_url: str = "sqlite:///./relay.db"
     internal_api_key: str = "replace-me"
@@ -59,10 +59,28 @@ class Settings:
     apns_environment: str = "development"
     app_presence_stale_seconds: int = 120
 
+    def validate_connector_setup_secret(self) -> None:
+        if self.environment in ("development", "test"):
+            return
+        secret = self.connector_setup_secret
+        # Minimum length plus a basic repeated-character/whitespace guard.
+        # Operators must generate random secrets; syntax cannot prove entropy.
+        if (
+            not secret
+            or len(secret) < 32
+            or len(set(secret)) < 8
+            or any(character.isspace() for character in secret)
+        ):
+            raise RuntimeError(
+                "CONNECTOR_SETUP_SECRET must be a strong random secret of at least "
+                "32 characters (at least 8 distinct, no whitespace) outside development/test. "
+                "Generate it with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
-            environment=os.getenv("RELAY_ENVIRONMENT", "development"),
+            environment=os.getenv("RELAY_ENVIRONMENT", "production"),
             public_base_url=os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8000/v1"),
             database_url=normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///./relay.db")),
             internal_api_key=os.getenv("INTERNAL_API_KEY", "replace-me"),

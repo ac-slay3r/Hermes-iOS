@@ -697,6 +697,28 @@ class HermesMobileConnector:
     async def _handle_job_streaming(
         self, websocket, job: dict, runtime, *, workdir: str | None = None,
     ) -> None:
+        """Keep relay liveness independent of quiet streaming model/tool work."""
+        task = asyncio.create_task(
+            self._execute_streaming_job(websocket, job, runtime, workdir=workdir)
+        )
+        try:
+            # Send-only liveness: the connection loop remains the sole receiver.
+            while True:
+                done, _ = await asyncio.wait({task}, timeout=self.heartbeat_interval_seconds)
+                if task in done:
+                    await task
+                    return
+                await websocket.send(json.dumps({"type": "heartbeat"}))
+        finally:
+            # Cancellation or a failed heartbeat must not leave a stream sending
+            # progress/results on an abandoned connection. Drain it before exit.
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    async def _execute_streaming_job(
+        self, websocket, job: dict, runtime, *, workdir: str | None = None,
+    ) -> None:
         """Process a job using the Hermes API server with streaming events."""
         try:
             accumulated_text = ""

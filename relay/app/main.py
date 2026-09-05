@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import inspect
 import logging
+import secrets
 import uuid
 
 logger = logging.getLogger("hermes.relay")
@@ -144,6 +145,7 @@ class ConnectorSession:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
+    settings.validate_connector_setup_secret()
 
     if settings.internal_api_key == "replace-me":
         if settings.environment not in ("development", "test"):
@@ -603,9 +605,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db: Session = Depends(get_db),
         request_settings: Settings = Depends(get_settings),
     ) -> dict:
-        # If a setup secret is configured, require it. Open access in dev when unset.
+        # Defense in depth: do not turn a missing/weak runtime secret into open enrollment.
+        try:
+            request_settings.validate_connector_setup_secret()
+        except RuntimeError:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Connector enrollment is unavailable.") from None
         if request_settings.connector_setup_secret:
-            if payload.installationSecret != request_settings.connector_setup_secret:
+            if not secrets.compare_digest(
+                (payload.installationSecret or "").encode("utf-8"),
+                request_settings.connector_setup_secret.encode("utf-8"),
+            ):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or missing installation secret.")
 
         user, host, connector_token = setup_connector_account(
@@ -786,7 +795,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def _meta() -> dict:
         return {"requestId": str(uuid.uuid4()), "timestamp": datetime.now(timezone.utc).isoformat()}
 
-    @app.post("/v1/device/register")
+    # Registered below only for explicitly selected local development/test.
     def register_device(
         payload: DeviceRegisterRequest,
         db: Session = Depends(get_db),
@@ -842,6 +851,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 },
             }
         )
+
+    if settings.environment in ("development", "test"):
+        app.post("/v1/device/register")(register_device)
 
     @app.post("/v1/pairing/redeem")
     def redeem_pairing(

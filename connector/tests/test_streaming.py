@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import httpx
 import json
+import pytest
 from dataclasses import dataclass
 from typing import AsyncIterator
 
@@ -72,6 +73,173 @@ class FakeWebSocket:
 
     async def send(self, data: str) -> None:
         self.sent.append(json.loads(data))
+
+
+def test_silent_streaming_job_sends_periodic_heartbeats(tmp_path):
+    """Quiet model/tool work must not starve relay liveness or read its socket."""
+    connector = HermesMobileConnector(
+        state_store=ConnectorStateStore(state_dir=tmp_path),
+        executor=make_executor(),
+        heartbeat_interval_seconds=0.01,
+    )
+
+    async def run():
+        release = asyncio.Event()
+        heartbeats = asyncio.Event()
+
+        class SilentRuntime:
+            async def send_text_message_streaming(self, **kwargs):
+                await release.wait()
+                yield StreamEvent(type="text_delta", data="Done")
+                yield StreamEvent(type="finish", session_id="silent-session")
+
+        class HeartbeatSocket(FakeWebSocket):
+            async def send(self, data):
+                await super().send(data)
+                if sum(m["type"] == "heartbeat" for m in self.sent) >= 3:
+                    heartbeats.set()
+
+            async def recv(self):
+                raise AssertionError("Streaming heartbeat must not receive relay frames")
+
+        ws = HeartbeatSocket()
+        before = asyncio.all_tasks()
+        task = asyncio.create_task(connector._handle_job_streaming(
+            ws, {"id": "silent", "latestUserMessage": "Work quietly"}, SilentRuntime(),
+        ))
+        try:
+            await asyncio.wait_for(heartbeats.wait(), timeout=0.5)
+            assert not task.done()
+            assert all(m == {"type": "heartbeat"} for m in ws.sent)
+            release.set()
+            await asyncio.wait_for(task, timeout=0.5)
+            delivered = [m for m in ws.sent if m["type"] != "heartbeat"]
+            assert [m["type"] for m in delivered] == ["job.progress", "job.result"]
+            assert delivered[-1]["text"] == "Done"
+            assert delivered[-1]["sessionId"] == "silent-session"
+            assert delivered[-1]["jobId"] == "silent"
+            assert not (asyncio.all_tasks() - before)
+        finally:
+            release.set()
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("stop", ["cancel", "heartbeat_error"])
+def test_streaming_job_cleans_up_on_interruption(tmp_path, stop):
+    connector = HermesMobileConnector(
+        state_store=ConnectorStateStore(state_dir=tmp_path),
+        executor=make_executor(),
+        heartbeat_interval_seconds=0.01,
+    )
+
+    async def run():
+        closed = asyncio.Event()
+        heartbeat = asyncio.Event()
+
+        class SilentRuntime:
+            async def send_text_message_streaming(self, **kwargs):
+                try:
+                    await asyncio.Event().wait()
+                    yield StreamEvent(type="text_delta", data="Must not be delivered")
+                finally:
+                    closed.set()
+
+        class InterruptingSocket(FakeWebSocket):
+            async def send(self, data):
+                if json.loads(data)["type"] == "heartbeat":
+                    heartbeat.set()
+                    if stop == "heartbeat_error":
+                        raise ConnectionError("relay disconnected")
+                await super().send(data)
+
+        ws = InterruptingSocket()
+        before = asyncio.all_tasks()
+        task = asyncio.create_task(connector._handle_job_streaming(
+            ws, {"id": "interrupted", "latestUserMessage": "Wait"}, SilentRuntime(),
+        ))
+        try:
+            await asyncio.wait_for(heartbeat.wait(), timeout=0.5)
+            if stop == "cancel":
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+            else:
+                with pytest.raises(ConnectionError, match="relay disconnected"):
+                    await task
+            assert closed.is_set(), "Streaming iterator must close before handler exits"
+            assert not (asyncio.all_tasks() - before), "No orphaned job/heartbeat tasks"
+            assert all(m["type"] == "heartbeat" for m in ws.sent)
+            sent_count = len(ws.sent)
+            await asyncio.sleep(0.03)
+            assert len(ws.sent) == sent_count
+        finally:
+            # Explicit teardown also keeps the deliberately RED run leak-free.
+            pending = asyncio.all_tasks() - before
+            for pending_task in pending:
+                pending_task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("failure_delivery", [False, True])
+def test_streaming_error_stops_heartbeats(tmp_path, failure_delivery):
+    """Runtime failure retains job.failed semantics, even if delivery also fails."""
+    connector = HermesMobileConnector(
+        state_store=ConnectorStateStore(state_dir=tmp_path),
+        executor=make_executor(),
+        heartbeat_interval_seconds=0.01,
+    )
+
+    async def run():
+        heartbeat = asyncio.Event()
+        closed = asyncio.Event()
+
+        class ErrorRuntime:
+            async def send_text_message_streaming(self, **kwargs):
+                try:
+                    await heartbeat.wait()
+                    raise RuntimeError("model failed")
+                    yield  # pragma: no cover
+                finally:
+                    closed.set()
+
+        class ErrorSocket(FakeWebSocket):
+            async def send(self, data):
+                message = json.loads(data)
+                if message["type"] == "job.failed" and failure_delivery:
+                    raise ConnectionError("cannot deliver failure")
+                await super().send(data)
+                if message["type"] == "heartbeat":
+                    heartbeat.set()
+
+        before = asyncio.all_tasks()
+        ws = ErrorSocket()
+        job = {"id": "error", "latestUserMessage": "Work"}
+        if failure_delivery:
+            with pytest.raises(ConnectionError, match="cannot deliver failure"):
+                await asyncio.wait_for(
+                    connector._handle_job_streaming(ws, job, ErrorRuntime()), 0.5,
+                )
+        else:
+            await asyncio.wait_for(
+                connector._handle_job_streaming(ws, job, ErrorRuntime()), 0.5,
+            )
+            failures = [m for m in ws.sent if m["type"] != "heartbeat"]
+            assert failures == [{
+                "type": "job.failed", "jobId": "error", "retryable": False,
+                "error": "model failed",
+            }]
+        assert closed.is_set()
+        assert not (asyncio.all_tasks() - before)
+        sent_count = len(ws.sent)
+        await asyncio.sleep(0.03)
+        assert len(ws.sent) == sent_count
+
+    asyncio.run(run())
 
 
 # --------------------------------------------------------------------------
