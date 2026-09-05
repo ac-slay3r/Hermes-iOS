@@ -20,6 +20,8 @@ final class AppContainer {
     private let notificationService: (any NotificationServiceProtocol)?
     private let usesMockPairingService: Bool
     private var isInitialized = false
+    private var hasFinishedLaunchAttempt = false
+    private var isInitializing = false
     private var lastCommandCatalogRefreshAt: Date?
     private var lastKnownHostOnline = false
 
@@ -58,7 +60,7 @@ final class AppContainer {
     }
 
     var shouldShowLaunchSplash: Bool {
-        sessionStore.isBootstrapping || (pairingStore.isPaired && !isInitialized)
+        pairingStore.isPaired && !hasFinishedLaunchAttempt
     }
 
     static func makeDefault(
@@ -291,7 +293,15 @@ final class AppContainer {
 
     func initialize() async {
         guard pairingStore.isPaired else { return }
-        guard !isInitialized else { return }
+        guard !isInitializing else { return }
+        guard !isInitialized || sessionStore.state.connectionStatus == .error else { return }
+        isInitializing = true
+        defer {
+            // Launch completion is independent of relay reachability. Leave the
+            // paired UI available while a later foreground or manual retry recovers.
+            hasFinishedLaunchAttempt = true
+            isInitializing = false
+        }
         guard await sessionStore.currentAccessToken() != nil else {
             await pairingStore.clearLocalPairing()
             return
@@ -314,6 +324,10 @@ final class AppContainer {
     }
 
     func handleAppDidBecomeActive() async {
+        guard pairingStore.isPaired else { return }
+        if !isInitialized || sessionStore.state.connectionStatus == .error {
+            await initialize()
+        }
         guard pairingStore.isPaired else { return }
         guard await sessionStore.currentAccessToken() != nil else { return }
 
@@ -359,6 +373,7 @@ final class AppContainer {
 
     private func handlePairingActivated() async {
         isInitialized = false
+        hasFinishedLaunchAttempt = false
         chatStore.reset()
         inboxStore.reset()
         await initialize()
@@ -629,6 +644,7 @@ final class AppContainer {
 
     private func handlePairingRemoved() async {
         isInitialized = false
+        hasFinishedLaunchAttempt = false
         await talkStore.endSessionIfNeeded()
         talkStore.reset()
         sensorUploadService?.stop()

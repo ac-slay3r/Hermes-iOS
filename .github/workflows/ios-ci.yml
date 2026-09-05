@@ -71,6 +71,9 @@ jobs:
       - run: uv venv .venv
       - run: uv pip install --python .venv/bin/python -e '.[dev]'
       - run: .venv/bin/python -m pytest
+      - name: Release gate and deployment regression tests
+        working-directory: .
+        run: relay/.venv/bin/python -m unittest discover -s scripts/tests -v
 
   connector-tests:
     name: Connector tests

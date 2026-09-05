@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ChatScreen: View {
+    @Environment(AppContainer.self) private var container
     @Environment(ChatStore.self) private var chatStore
     @Environment(HermesHostStore.self) private var hostStore
     @Environment(PairingStore.self) private var pairingStore
@@ -24,7 +25,7 @@ struct ChatScreen: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                if pairingStore.isPaired, hostStore.connectionState != .online {
+                if pairingStore.isPaired, connectionBannerState != .online {
                     connectionBanner
                 }
                 messageList
@@ -368,6 +369,10 @@ struct ChatScreen: View {
         }
     }
 
+    private var connectionBannerState: HermesHostConnectionState {
+        sessionStore.state.connectionStatus == .error ? .unreachable : hostStore.connectionState
+    }
+
     private var connectionBanner: some View {
         HStack(alignment: .center, spacing: Design.Spacing.sm) {
             Image(systemName: connectionBannerIcon)
@@ -399,7 +404,7 @@ struct ChatScreen: View {
     }
 
     private var connectionBannerIcon: String {
-        switch hostStore.connectionState {
+        switch connectionBannerState {
         case .online:
             return "desktopcomputer"
         case .offline:
@@ -412,7 +417,10 @@ struct ChatScreen: View {
     }
 
     private var connectionBannerTitle: String {
-        switch hostStore.connectionState {
+        if sessionStore.state.connectionStatus == .error {
+            return "Could not connect to relay"
+        }
+        switch connectionBannerState {
         case .online:
             return "Hermes host online"
         case .offline:
@@ -425,7 +433,10 @@ struct ChatScreen: View {
     }
 
     private var connectionBannerMessage: String {
-        switch hostStore.connectionState {
+        if sessionStore.state.connectionStatus == .error {
+            return sessionStore.lastErrorMessage ?? "Check your network or VPN, then retry. Your pairing is saved."
+        }
+        switch connectionBannerState {
         case .online:
             return "Your Hermes host is connected."
         case .offline:
@@ -438,7 +449,7 @@ struct ChatScreen: View {
     }
 
     private var connectionBannerActionLabel: String {
-        switch hostStore.connectionState {
+        switch connectionBannerState {
         case .online, .offline, .notConnected:
             return "Settings"
         case .unreachable:
@@ -447,9 +458,12 @@ struct ChatScreen: View {
     }
 
     private func connectionBannerAction() {
-        switch hostStore.connectionState {
+        switch connectionBannerState {
         case .unreachable:
-            Task { await hostStore.refresh() }
+            Task {
+                await container.initialize()
+                await hostStore.refresh()
+            }
         case .online, .offline, .notConnected:
             router.presentSheet(.settings)
         }

@@ -2,7 +2,234 @@ import Foundation
 import HealthKit
 import Testing
 import UIKit
+import XCTest
 @testable import HermesMobile
+
+final class OfflineRecoveryTests: XCTestCase {
+    @MainActor
+    private final class RecoverableBootstrapService: SessionBootstrapServiceProtocol {
+        var isOffline = true
+        var loadCallCount = 0
+        private let service = MockSessionBootstrapService()
+
+        func registerDevice(_ request: DeviceRegistrationRequest) async throws -> SessionBootstrapResponse {
+            if isOffline { throw URLError(.notConnectedToInternet) }
+            return try await service.registerDevice(request)
+        }
+
+        func loadSession(accessToken: String?) async throws -> AppSessionState {
+            loadCallCount += 1
+            if isOffline { throw URLError(.notConnectedToInternet) }
+            return try await service.loadSession(accessToken: accessToken)
+        }
+
+        func refreshAuth(refreshToken: String) async throws -> AuthTokens {
+            if isOffline { throw URLError(.notConnectedToInternet) }
+            return try await service.refreshAuth(refreshToken: refreshToken)
+        }
+
+        func revokeCurrentSession(accessToken: String?) async throws {}
+    }
+
+    @MainActor
+    private final class RecoverableHostService: HermesHostServiceProtocol {
+        var isOffline = false
+        let service = MockHermesHostService()
+
+        func fetchCurrentHost(accessToken: String?) async throws -> HermesHostStatus? {
+            if isOffline { throw URLError(.notConnectedToInternet) }
+            return try await service.fetchCurrentHost(accessToken: accessToken)
+        }
+
+        func createEnrollmentCode(accessToken: String?) async throws -> HostEnrollmentCode {
+            try await service.createEnrollmentCode(accessToken: accessToken)
+        }
+
+        func revokeCurrentHost(accessToken: String?) async throws {
+            try await service.revokeCurrentHost(accessToken: accessToken)
+        }
+    }
+
+    @MainActor
+    private func makePairedContainer(
+        defaults: UserDefaults,
+        bootstrapService: RecoverableBootstrapService
+    ) async -> AppContainer {
+        let persistence = UserDefaultsAppPersistenceStore(defaults: defaults)
+        let session = AppSessionStore(
+            bootstrapService: bootstrapService,
+            syncCoordinator: MockSyncCoordinator(),
+            secureStore: MockSecureStore(),
+            persistence: persistence,
+            notificationService: MockNotificationService(),
+            environmentProvider: { .production }
+        )
+        let pairing = PairingStore(
+            pairingService: MockPairingService(),
+            sessionStore: session,
+            persistence: persistence,
+            onboardingDefaults: defaults,
+            environmentProvider: { .production },
+            relayBaseURLProvider: { "https://relay.test/v1" }
+        )
+        let didPair = await pairing.pair(using: "ABCD2345")
+        XCTAssertTrue(didPair)
+        pairing.completePermissionsOnboarding()
+        return AppContainer(
+            sessionStore: session,
+            pairingStore: pairing,
+            hostStore: HermesHostStore(hostService: MockHermesHostService(), accessTokenProvider: { "token" }),
+            chatStore: ChatStore(hermesClient: MockHermesClient(), persistence: persistence),
+            inboxStore: InboxStore(inboxService: MockInboxService(), persistence: persistence, sessionStore: session),
+            permissionsStore: PermissionsStore(
+                locationService: MockLocationService(),
+                healthService: MockHealthService(),
+                notificationService: MockNotificationService(),
+                mediaService: MockMediaService()
+            ),
+            settingsStore: SettingsStore(persistence: persistence),
+            talkStore: TalkStore(voiceService: MockVoiceSessionService()),
+            usesMockPairingService: true
+        )
+    }
+
+    @MainActor
+    func testOfflineBootstrapDismissesSplashAndRetainsPairing() async {
+        let suite = "offline-launch-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = RecoverableBootstrapService()
+        let container = await makePairedContainer(defaults: defaults, bootstrapService: service)
+        let token = await container.sessionStore.currentAccessToken()
+        let refreshToken = await container.sessionStore.currentRefreshToken()
+        let relayURL = container.pairingStore.pairedRelayConfiguration?.baseURLString
+        let cachedConversation = Conversation(title: "Saved offline conversation")
+        UserDefaultsAppPersistenceStore(defaults: defaults).saveConversationCache(cachedConversation)
+        XCTAssertTrue(container.shouldShowLaunchSplash)
+
+        await container.initialize()
+
+        XCTAssertEqual(container.sessionStore.state.connectionStatus, .error)
+        XCTAssertNotNil(container.sessionStore.lastErrorMessage)
+        XCTAssertFalse(container.shouldShowLaunchSplash)
+        XCTAssertTrue(container.pairingStore.isPaired)
+        XCTAssertFalse(container.pairingStore.needsPermissionsOnboarding)
+        XCTAssertEqual(container.pairingStore.pairedRelayConfiguration?.baseURLString, relayURL)
+        XCTAssertEqual(UserDefaultsAppPersistenceStore(defaults: defaults).loadPairedRelayConfiguration()?.baseURLString, relayURL)
+        let retainedToken = await container.sessionStore.currentAccessToken()
+        let retainedRefreshToken = await container.sessionStore.currentRefreshToken()
+        XCTAssertEqual(retainedToken, token)
+        XCTAssertEqual(retainedRefreshToken, refreshToken)
+
+        // ChatScreen loads the cache once the launch overlay is gone.
+        await container.chatStore.loadConversationIfNeeded()
+        XCTAssertEqual(container.chatStore.conversation?.id, cachedConversation.id)
+
+        // A later session retry must not cover the recovery controls again.
+        container.sessionStore.isBootstrapping = true
+        XCTAssertFalse(container.shouldShowLaunchSplash)
+        container.sessionStore.isBootstrapping = false
+    }
+
+    @MainActor
+    func testForegroundRetriesOfflineInitializationAndLoadsConnectedStores() async {
+        let suite = "offline-foreground-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = RecoverableBootstrapService()
+        let container = await makePairedContainer(defaults: defaults, bootstrapService: service)
+        await container.initialize()
+        let failedLoadCount = service.loadCallCount
+
+        // Repeated offline foregrounding must leave launch completed and pairing intact.
+        await container.handleAppDidBecomeActive()
+        XCTAssertFalse(container.shouldShowLaunchSplash)
+        XCTAssertTrue(container.pairingStore.isPaired)
+        XCTAssertGreaterThan(service.loadCallCount, failedLoadCount)
+
+        service.isOffline = false
+        await container.handleAppDidBecomeActive()
+
+        XCTAssertEqual(container.sessionStore.state.connectionStatus, .connected)
+        XCTAssertNil(container.sessionStore.lastErrorMessage)
+        XCTAssertNotNil(container.chatStore.conversation)
+        XCTAssertFalse(container.inboxStore.items.isEmpty)
+        XCTAssertFalse(container.shouldShowLaunchSplash)
+        let recoveredLoadCount = service.loadCallCount
+        await container.initialize()
+        XCTAssertEqual(service.loadCallCount, recoveredLoadCount)
+    }
+
+    @MainActor
+    func testManualInitializationRetryRecoversWithoutForegrounding() async {
+        let suite = "offline-manual-retry-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = RecoverableBootstrapService()
+        let container = await makePairedContainer(defaults: defaults, bootstrapService: service)
+        await container.initialize()
+        XCTAssertFalse(container.shouldShowLaunchSplash)
+
+        service.isOffline = false
+        await container.initialize()
+
+        XCTAssertEqual(container.sessionStore.state.connectionStatus, .connected)
+        XCTAssertNotNil(container.chatStore.conversation)
+        XCTAssertTrue(container.pairingStore.isPaired)
+        XCTAssertFalse(container.shouldShowLaunchSplash)
+    }
+
+    @MainActor
+    func testRetryAlsoRecoversSessionFailureAfterSuccessfulLaunch() async {
+        let suite = "online-then-offline-retry-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = RecoverableBootstrapService()
+        service.isOffline = false
+        let container = await makePairedContainer(defaults: defaults, bootstrapService: service)
+        await container.initialize()
+        service.isOffline = true
+        await container.sessionStore.refreshSession()
+        XCTAssertEqual(container.sessionStore.state.connectionStatus, .error)
+        XCTAssertFalse(container.shouldShowLaunchSplash)
+
+        service.isOffline = false
+        await container.initialize()
+
+        XCTAssertEqual(container.sessionStore.state.connectionStatus, .connected)
+        XCTAssertNil(container.sessionStore.lastErrorMessage)
+        XCTAssertFalse(container.shouldShowLaunchSplash)
+    }
+
+    @MainActor
+    func testTransportFailureOverridesCachedOnlineStatusAndNotifiesObserversUntilRecovery() async {
+        let service = RecoverableHostService()
+        let store = HermesHostStore(hostService: service, accessTokenProvider: { "token" })
+        var observedStates: [HermesHostConnectionState] = []
+        store.onHostChanged = { observedStates.append(store.connectionState) }
+        await store.refresh()
+        let hostID = store.currentHost?.id
+        XCTAssertTrue(store.isHostOnline)
+
+        service.isOffline = true
+        await store.refresh()
+
+        XCTAssertEqual(store.currentHost?.id, hostID)
+        XCTAssertEqual(store.currentHost?.isOnline, true, "Keep the last-known snapshot for offline display")
+        XCTAssertEqual(store.connectionState, .unreachable)
+        XCTAssertFalse(store.isHostOnline)
+        XCTAssertNotNil(store.lastErrorMessage)
+        XCTAssertEqual(observedStates, [.online, .unreachable])
+
+        service.isOffline = false
+        await store.refresh()
+
+        XCTAssertEqual(store.connectionState, .online)
+        XCTAssertTrue(store.isHostOnline)
+        XCTAssertNil(store.lastErrorMessage)
+        XCTAssertEqual(observedStates, [.online, .unreachable, .online])
+    }
+}
 
 @Suite(.serialized)
 struct AppStoresTests {
@@ -1700,7 +1927,7 @@ struct AppStoresTests {
     }
 
     @Test @MainActor
-    func hostStoreKeepsKnownOnlineHostDuringRefreshErrors() async throws {
+    func hostStoreKeepsKnownHostButMarksItUnreachableDuringRefreshErrors() async throws {
         let service = RecordingHermesHostService()
         service.currentHost = HermesHostStatus(
             id: UUID(),
@@ -1726,7 +1953,8 @@ struct AppStoresTests {
         await hostStore.refresh()
 
         #expect(hostStore.currentHost?.resolvedDisplayName == "Home Mac mini")
-        #expect(hostStore.connectionState == .online)
+        #expect(hostStore.connectionState == .unreachable)
+        #expect(hostStore.isHostOnline == false)
         #expect(hostStore.lastErrorMessage == "Relay unreachable.")
     }
 

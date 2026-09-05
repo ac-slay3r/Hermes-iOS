@@ -29,20 +29,21 @@ final class HermesHostStore {
     }
 
     var isHostOnline: Bool {
-        currentHost?.isOnline == true
+        connectionState == .online
     }
 
     var connectionState: HermesHostConnectionState {
+        // A cached server snapshot is not evidence of current reachability.
+        if lastErrorMessage != nil {
+            return .unreachable
+        }
+
         if currentHost?.isOnline == true {
             return .online
         }
 
         if currentHost != nil {
-            return lastErrorMessage == nil ? .offline : .unreachable
-        }
-
-        if lastErrorMessage != nil {
-            return .unreachable
+            return .offline
         }
 
         return .notConnected
@@ -60,6 +61,7 @@ final class HermesHostStore {
             onHostChanged?()
         } catch {
             lastErrorMessage = error.localizedDescription
+            onHostChanged?()
         }
     }
 

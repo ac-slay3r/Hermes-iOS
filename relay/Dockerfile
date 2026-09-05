@@ -5,7 +5,11 @@ WORKDIR /app
 COPY pyproject.toml ./
 COPY app ./app
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . \
+    && useradd --uid 10001 --create-home --shell /usr/sbin/nologin relay
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+USER relay
 
 EXPOSE 8000
 
