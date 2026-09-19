@@ -110,17 +110,9 @@ targets:
         NSSpeechRecognitionUsageDescription: "Hermes uses speech recognition for voice commands and local transcription."
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
-        UIBackgroundModes:
-          - location
-          - remote-notification
-          - audio
+        UIBackgroundModes: []
         UIApplicationSceneManifest:
-          UIApplicationSupportsMultipleScenes: true
-          UISceneConfigurations:
-            CPTemplateApplicationSceneSessionRoleApplication:
-              - UISceneClassName: CPTemplateApplicationScene
-                UISceneConfigurationName: CarPlay
-                UISceneDelegateClassName: "$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate"
+          UIApplicationSupportsMultipleScenes: false
 
   HermesMobileWidgets:
     type: app-extension

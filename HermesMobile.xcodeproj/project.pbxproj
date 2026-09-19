@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3FC30370603D7A0C3F087003 /* AdminLaunchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FC0D8DA927301443BB93DF9 /* AdminLaunchUITests.swift */; };
+		92BA2EF06A1EBB40419CB948 /* AdminClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E74AD9E3D25B18482F365BD /* AdminClientTests.swift */; };
+		852E3063A25EE1864919C69F /* AdminRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57CA548DC02860C24B0CABFA /* AdminRoot.swift */; };
+		389F8536F5172940AD411357 /* AdminEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47615929A594A026F5460B2 /* AdminEditor.swift */; };
+		BB58B200CB42A5F2584C2AB8 /* HermesAdminClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE61F41C0A39FD9351820878 /* HermesAdminClient.swift */; };
 		02426814A334E68AC2EB077D /* VoiceState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25563E39F08D0F19F538ADD8 /* VoiceState.swift */; };
 		03B323E60712D2CA303797A3 /* MockInboxService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8D4D1AE1F87252EEB0C2FF /* MockInboxService.swift */; };
 		045CBCF8ADA710846AF339B8 /* HermesClientProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6D891E4F6D043CE9C6CC15 /* HermesClientProtocol.swift */; };
@@ -201,6 +206,11 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		8FC0D8DA927301443BB93DF9 /* AdminLaunchUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobileUITests/AdminLaunchUITests.swift; sourceTree = SOURCE_ROOT; };
+		7E74AD9E3D25B18482F365BD /* AdminClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobileTests/AdminClientTests.swift; sourceTree = SOURCE_ROOT; };
+		57CA548DC02860C24B0CABFA /* AdminRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/Administration/AdminRoot.swift; sourceTree = SOURCE_ROOT; };
+		E47615929A594A026F5460B2 /* AdminEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/Administration/AdminEditor.swift; sourceTree = SOURCE_ROOT; };
+		CE61F41C0A39FD9351820878 /* HermesAdminClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/Administration/HermesAdminClient.swift; sourceTree = SOURCE_ROOT; };
 		014F7454548D4B275B575E61 /* MockSecureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockSecureStore.swift; sourceTree = "<group>"; };
 		01A310FC7CE4D91514A32147 /* HermesHostServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesHostServiceProtocol.swift; sourceTree = "<group>"; };
 		0220D103178EF414928CFCA7 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
@@ -901,6 +911,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3FC30370603D7A0C3F087003 /* AdminLaunchUITests.swift in Sources */,
 				C50759AFB789B4D6B6EE5C70 /* AppTemplateUITests.swift in Sources */,
 				4D0ED4A2C2E6E6E5C3DA4932 /* AppTemplateUITestsLaunchTests.swift in Sources */,
 			);
@@ -911,6 +922,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1C28312C8A9819F31BBB3386 /* AppStoresTests.swift in Sources */,
+				92BA2EF06A1EBB40419CB948 /* AdminClientTests.swift in Sources */,
 				85AD98E44891203305628F5C /* AppTemplateTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -924,6 +936,9 @@
 				6D748596071829A1B2C3D4E5 /* HermesWidgetData.swift in Sources */,
 				5C637485960718A1B2C3D4E5 /* SharedWidgetDataStore.swift in Sources */,
 				78E916A7C30474717FE1F7DC /* AppContainer.swift in Sources */,
+				BB58B200CB42A5F2584C2AB8 /* HermesAdminClient.swift in Sources */,
+				389F8536F5172940AD411357 /* AdminEditor.swift in Sources */,
+				852E3063A25EE1864919C69F /* AdminRoot.swift in Sources */,
 				48EA1D2ECF55A452C1F6F592 /* AppEntry.swift in Sources */,
 				1EA612E6046B341EBC64339F /* AppPersistenceStoreProtocol.swift in Sources */,
 				6A2C91BD3A81E8894274CAB5 /* AppRootView.swift in Sources */,

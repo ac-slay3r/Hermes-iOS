@@ -41,6 +41,7 @@ final class HermesMobileUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        throw XCTSkip("Legacy pairing/chat product is frozen; AdminLaunchUITests verifies the administration entry point.")
     }
 
     @MainActor

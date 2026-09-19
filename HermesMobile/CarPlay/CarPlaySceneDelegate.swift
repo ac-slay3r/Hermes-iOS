@@ -14,6 +14,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         _ templateApplicationScene: CPTemplateApplicationScene,
         didConnect interfaceController: CPInterfaceController
     ) {
+        guard AdminLaunchPolicy.legacyRemoteEnabled else { return }
         self.interfaceController = interfaceController
 
         let manager = CarPlayVoiceManager(interfaceController: interfaceController)
