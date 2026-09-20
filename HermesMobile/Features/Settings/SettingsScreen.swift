@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(AppContainer.self) private var container
     @Environment(AppSessionStore.self) private var sessionStore
     @Environment(HermesHostStore.self) private var hostStore
     @Environment(PairingStore.self) private var pairingStore
@@ -10,6 +11,11 @@ struct SettingsScreen: View {
     @Environment(SettingsStore.self) private var settingsStore
     @Environment(TabRouter.self) private var router
     @State private var isSystemCockpitPresented = false
+    let showsDismissButton: Bool
+
+    init(showsDismissButton: Bool = true) {
+        self.showsDismissButton = showsDismissButton
+    }
 
     var body: some View {
         ZStack {
@@ -25,6 +31,7 @@ struct SettingsScreen: View {
                         environmentSection
                     }
                     preferencesSection
+                    deviceAccessSection
                     locationSection
                     privacySection
                     aboutSection
@@ -37,10 +44,12 @@ struct SettingsScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: Design.Size.iconSmall, weight: .semibold))
-                        .foregroundStyle(Design.Colors.foreground)
+                if showsDismissButton {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: Design.Size.iconSmall, weight: .semibold))
+                            .foregroundStyle(Design.Colors.foreground)
+                    }
                 }
             }
         }
@@ -90,7 +99,7 @@ struct SettingsScreen: View {
                 settingsToggle(
                     icon: "bolt.fill",
                     iconColor: Design.Brand.accent,
-                    title: "Auto-Connect",
+                    title: "Reconnect When Active",
                     isOn: autoConnectBinding
                 )
             }
@@ -272,6 +281,36 @@ struct SettingsScreen: View {
         }
     }
 
+    // MARK: - Device Access
+
+    private var deviceAccessSection: some View {
+        SettingsSectionView(title: "Device Access") {
+            VStack(alignment: .leading, spacing: Design.Spacing.sm) {
+                settingsToggle(
+                    icon: "sensor.tag.radiowaves.forward.fill",
+                    iconColor: .teal,
+                    title: "Device Data Sync",
+                    isOn: deviceServicesBinding
+                )
+                Text(settingsStore.settings.deviceServicesEnabled
+                     ? "Authorized location, health, and motion data can sync through the paired relay. Individual iOS permissions still apply. Turning this off stops monitoring and removes queued device samples."
+                     : "Off by default. Chat and dashboard administration continue without sensor collection or upload.")
+                    .font(Design.Typography.caption)
+                    .foregroundStyle(Design.Colors.secondaryForeground)
+
+                sectionDivider
+
+                settingsNavRow(
+                    icon: "lock.shield.fill",
+                    iconColor: .green,
+                    title: "Permissions"
+                ) {
+                    router.navigate(to: .permissions)
+                }
+            }
+        }
+    }
+
     // MARK: - Location
 
     private var locationSection: some View {
@@ -301,6 +340,7 @@ struct SettingsScreen: View {
                     title: "Background Location",
                     isOn: backgroundLocationBinding
                 )
+                .disabled(!settingsStore.settings.deviceServicesEnabled)
 
                 Text(backgroundLocationDescription)
                     .font(Design.Typography.caption)
@@ -318,9 +358,13 @@ struct SettingsScreen: View {
                 iconColor: .green,
                 title: "Permissions"
             ) {
-                dismiss()
-                Task {
-                    try? await Task.sleep(for: .milliseconds(300))
+                if showsDismissButton {
+                    dismiss()
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(300))
+                        router.navigate(to: .permissions)
+                    }
+                } else {
                     router.navigate(to: .permissions)
                 }
             }
@@ -339,24 +383,26 @@ struct SettingsScreen: View {
                     value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0") (\(Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String ?? "1"))"
                 )
 
-                sectionDivider
-
-                settingsNavRow(
-                    icon: "doc.text",
-                    iconColor: .secondary,
-                    title: "Terms of Service"
-                ) {
-                    openConfiguredURL(settingsStore.buildConfiguration.termsOfServiceURL)
+                if settingsStore.buildConfiguration.termsOfServiceURL != nil {
+                    sectionDivider
+                    settingsNavRow(
+                        icon: "doc.text",
+                        iconColor: .secondary,
+                        title: "Terms of Service"
+                    ) {
+                        openConfiguredURL(settingsStore.buildConfiguration.termsOfServiceURL)
+                    }
                 }
 
-                sectionDivider
-
-                settingsNavRow(
-                    icon: "hand.raised",
-                    iconColor: .secondary,
-                    title: "Privacy Policy"
-                ) {
-                    openConfiguredURL(settingsStore.buildConfiguration.privacyPolicyURL)
+                if settingsStore.buildConfiguration.privacyPolicyURL != nil {
+                    sectionDivider
+                    settingsNavRow(
+                        icon: "hand.raised",
+                        iconColor: .secondary,
+                        title: "Privacy Policy"
+                    ) {
+                        openConfiguredURL(settingsStore.buildConfiguration.privacyPolicyURL)
+                    }
                 }
 
                 if settingsStore.buildConfiguration.supportURL != nil {
@@ -387,12 +433,22 @@ struct SettingsScreen: View {
         Binding(
             get: { settingsStore.settings.notificationsEnabled },
             set: { newValue in
-                settingsStore.settings.notificationsEnabled = newValue
-                // Immediately register or deactivate push token on the relay
                 Task {
-                    let container = AppContainer.sharedDefault()
-                    if let token = UserDefaults.standard.string(forKey: "hermes.apns.deviceToken") {
-                        await container.registerPushTokenIfNeeded(token)
+                    if newValue {
+                        await permissionsStore.requestPermission(for: .notifications)
+                        await permissionsStore.reloadCapabilities()
+                        let notificationStatus = permissionsStore.capabilities
+                            .first(where: { $0.permissionType == .notifications })?.status
+                        let granted = notificationStatus == .authorized || notificationStatus == .limited
+                        await container.setNotificationsEnabled(granted)
+                        if granted {
+                            UIApplication.shared.registerForRemoteNotifications()
+                        } else {
+                            UIApplication.shared.unregisterForRemoteNotifications()
+                        }
+                    } else {
+                        await container.setNotificationsEnabled(false)
+                        UIApplication.shared.unregisterForRemoteNotifications()
                     }
                 }
             }
@@ -406,10 +462,20 @@ struct SettingsScreen: View {
         )
     }
 
+    private var deviceServicesBinding: Binding<Bool> {
+        Binding(
+            get: { settingsStore.settings.deviceServicesEnabled },
+            set: { enabled in
+                Task { await container.setDeviceServicesEnabled(enabled) }
+            }
+        )
+    }
+
     private var backgroundLocationBinding: Binding<Bool> {
         Binding(
             get: { settingsStore.settings.locationSyncPreference == .backgroundAllowed },
             set: { isEnabled in
+                guard settingsStore.settings.deviceServicesEnabled else { return }
                 let preference: LocationSyncPreference = isEnabled ? .backgroundAllowed : .foregroundOnly
                 settingsStore.settings.locationSyncPreference = preference
                 permissionsStore.updateLocationSyncPreference(preference)
@@ -441,6 +507,9 @@ struct SettingsScreen: View {
     }
 
     private var backgroundLocationDescription: String {
+        guard settingsStore.settings.deviceServicesEnabled else {
+            return "Device Data Sync is off. Enable it before requesting or using background location."
+        }
         if settingsStore.settings.locationSyncPreference == .backgroundAllowed {
             switch permissionsStore.locationAuthorizationLevel {
             case .always:

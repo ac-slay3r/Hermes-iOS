@@ -300,7 +300,7 @@ This skill would be installed in `~/.hermes/skills/ios-context-awareness/` and l
 | `NSHealthUpdateUsageDescription` | HealthKit write (system requirement) |
 | `NSCameraUsageDescription` | Camera for voice mode + attachments |
 | `NSMicrophoneUsageDescription` | Microphone for voice mode |
-| `NSPhotoLibraryUsageDescription` | Photo library for attachments |
+| `NSPhotoLibraryAddUsageDescription` only | Chat reads through the system Photos picker without broad access; saving a displayed image requests add-only access after an explicit Save |
 | `NSSpeechRecognitionUsageDescription` | On-device speech recognition |
 | `NSSupportsLiveActivities` | ActivityKit Live Activities |
 | `NSSupportsLiveActivitiesFrequentUpdates` | Push-based Live Activity updates |
@@ -309,7 +309,6 @@ This skill would be installed in `~/.hermes/skills/ios-context-awareness/` and l
 
 | Mode | Purpose |
 |------|---------|
-| `processing` | Background task scheduler (health delivery, data sync) |
 | `location` | Background location updates |
 | `remote-notification` | Silent push to wake app |
 | `audio` | Voice session survives app switch |

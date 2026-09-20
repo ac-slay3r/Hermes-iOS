@@ -161,10 +161,13 @@ final class LiveSessionBootstrapService: SessionBootstrapServiceProtocol {
     }
 
     func revokeCurrentSession(accessToken: String?) async throws {
-        let _: RevokeResponse = try await apiClient.post(
+        let response: RevokeResponse = try await apiClient.post(
             path: "auth/revoke",
             body: EmptyBody(),
             accessToken: accessToken
         )
+        guard response.revoked else {
+            throw RelayAPIClient.ClientError.requestFailed("The relay did not confirm session revocation.")
+        }
     }
 }

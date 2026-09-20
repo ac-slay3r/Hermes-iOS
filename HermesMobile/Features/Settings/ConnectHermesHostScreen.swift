@@ -4,6 +4,7 @@ struct ConnectHermesHostScreen: View {
     @Environment(HermesHostStore.self) private var hostStore
     @Environment(PairingStore.self) private var pairingStore
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmation: DestructiveConfirmation?
 
     var body: some View {
         ZStack {
@@ -18,7 +19,7 @@ struct ConnectHermesHostScreen: View {
                     }
                     actionsCard
 
-                    if let errorMessage = hostStore.lastErrorMessage {
+                    if let errorMessage = pairingStore.lastErrorMessage ?? hostStore.lastErrorMessage {
                         errorBanner(message: errorMessage)
                     }
                 }
@@ -29,6 +30,33 @@ struct ConnectHermesHostScreen: View {
         .navigationTitle("Connect Host")
         .task {
             await hostStore.refresh()
+        }
+        .confirmationDialog(
+            confirmation?.title ?? "Confirm",
+            isPresented: Binding(
+                get: { confirmation != nil },
+                set: { if !$0 { confirmation = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if confirmation == .revokeHost {
+                Button("Revoke Host", role: .destructive) {
+                    confirmation = nil
+                    Task { await hostStore.revokeCurrentHost() }
+                }
+            } else if confirmation == .disconnectRelay {
+                Button("Disconnect Device", role: .destructive) {
+                    confirmation = nil
+                    Task {
+                        if await pairingStore.disconnect() {
+                            dismiss()
+                        }
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { confirmation = nil }
+        } message: {
+            Text(confirmation?.message ?? "")
         }
     }
 
@@ -102,7 +130,7 @@ struct ConnectHermesHostScreen: View {
         VStack(spacing: 0) {
             if hostStore.currentHost != nil {
                 Button(role: .destructive) {
-                    Task { await hostStore.revokeCurrentHost() }
+                    confirmation = .revokeHost
                 } label: {
                     actionRow(
                         icon: "desktopcomputer.trianglebadge.exclamationmark",
@@ -116,10 +144,7 @@ struct ConnectHermesHostScreen: View {
             }
 
             Button {
-                Task {
-                    await pairingStore.disconnect()
-                    dismiss()
-                }
+                confirmation = .disconnectRelay
             } label: {
                 actionRow(
                     icon: "rectangle.portrait.and.arrow.right",
@@ -130,6 +155,27 @@ struct ConnectHermesHostScreen: View {
         }
         .background(Design.Colors.surface)
         .clipShape(RoundedRectangle(cornerRadius: Design.CornerRadius.xl))
+    }
+
+    private enum DestructiveConfirmation: Equatable {
+        case revokeHost
+        case disconnectRelay
+
+        var title: String {
+            switch self {
+            case .revokeHost: "Revoke this Hermes host?"
+            case .disconnectRelay: "Disconnect this device?"
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .revokeHost:
+                "The paired relay will stop using the current Hermes host until a new host is enrolled."
+            case .disconnectRelay:
+                "This removes the relay session and companion credentials from this device. Dashboard sign-in remains separate."
+            }
+        }
     }
 
     // MARK: - Components

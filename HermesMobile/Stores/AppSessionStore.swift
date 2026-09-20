@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 @Observable
 final class AppSessionStore {
+    private static let remoteRevocationAttemptLimit = 3
     private enum SecureKeys {
         static let accessToken = "session.accessToken"
         static let refreshToken = "session.refreshToken"
@@ -104,12 +105,21 @@ final class AppSessionStore {
         await applySessionState(state, tokens: tokens)
     }
 
-    func revokeCurrentSession() async {
-        do {
-            try await bootstrapService.revokeCurrentSession(accessToken: await currentAccessToken())
-        } catch {
-            lastErrorMessage = error.localizedDescription
+    func revokeCurrentSession() async -> Bool {
+        let accessToken = await currentAccessToken()
+        for attempt in 1...Self.remoteRevocationAttemptLimit {
+            do {
+                try await bootstrapService.revokeCurrentSession(accessToken: accessToken)
+                lastErrorMessage = nil
+                return true
+            } catch {
+                lastErrorMessage = error.localizedDescription
+                if attempt < Self.remoteRevocationAttemptLimit {
+                    try? await Task.sleep(for: .milliseconds(150))
+                }
+            }
         }
+        return false
     }
 
     func clearSession() async {

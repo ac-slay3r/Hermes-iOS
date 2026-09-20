@@ -228,54 +228,65 @@ struct UserSettings: Codable, Hashable, Sendable {
     var userName: String
     var avatarInitials: String
     var notificationsEnabled: Bool
+    var notificationConsentEstablished: Bool
     var hapticFeedbackEnabled: Bool
     var environment: AppEnvironment
     var relayConfiguration: RelayConfiguration
     var autoConnectOnLaunch: Bool
     var locationSyncPreference: LocationSyncPreference
+    var deviceServicesEnabled: Bool
 
     init(
         userName: String = "User",
         avatarInitials: String = "U",
-        notificationsEnabled: Bool = true,
+        notificationsEnabled: Bool = false,
+        notificationConsentEstablished: Bool = false,
         hapticFeedbackEnabled: Bool = true,
         environment: AppEnvironment = AppEnvironmentPolicy.currentBuild.defaultEnvironment,
         relayConfiguration: RelayConfiguration = RelayConfiguration.defaultValue(),
         autoConnectOnLaunch: Bool = true,
-        locationSyncPreference: LocationSyncPreference = .foregroundOnly
+        locationSyncPreference: LocationSyncPreference = .foregroundOnly,
+        deviceServicesEnabled: Bool = false
     ) {
         self.userName = userName
         self.avatarInitials = avatarInitials
-        self.notificationsEnabled = notificationsEnabled
+        self.notificationConsentEstablished = notificationConsentEstablished
+        self.notificationsEnabled = notificationConsentEstablished && notificationsEnabled
         self.hapticFeedbackEnabled = hapticFeedbackEnabled
         self.environment = environment
         self.relayConfiguration = relayConfiguration
         self.autoConnectOnLaunch = autoConnectOnLaunch
         self.locationSyncPreference = locationSyncPreference
+        self.deviceServicesEnabled = deviceServicesEnabled
     }
 
     private enum CodingKeys: String, CodingKey {
         case userName
         case avatarInitials
         case notificationsEnabled
+        case notificationConsentEstablished
         case hapticFeedbackEnabled
         case environment
         case relayConfiguration
         case autoConnectOnLaunch
         case locationSyncPreference
+        case deviceServicesEnabled
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         userName = try container.decodeIfPresent(String.self, forKey: .userName) ?? "User"
         avatarInitials = try container.decodeIfPresent(String.self, forKey: .avatarInitials) ?? "U"
-        notificationsEnabled = try container.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? true
+        notificationConsentEstablished = try container.decodeIfPresent(Bool.self, forKey: .notificationConsentEstablished) ?? false
+        notificationsEnabled = notificationConsentEstablished
+            && (try container.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? false)
         hapticFeedbackEnabled = try container.decodeIfPresent(Bool.self, forKey: .hapticFeedbackEnabled) ?? true
         environment = try container.decodeIfPresent(AppEnvironment.self, forKey: .environment) ?? AppEnvironmentPolicy.currentBuild.defaultEnvironment
         relayConfiguration = try container.decodeIfPresent(RelayConfiguration.self, forKey: .relayConfiguration)
             ?? RelayConfiguration.migratedLegacyValue(environment: environment)
         autoConnectOnLaunch = try container.decodeIfPresent(Bool.self, forKey: .autoConnectOnLaunch) ?? true
         locationSyncPreference = try container.decodeIfPresent(LocationSyncPreference.self, forKey: .locationSyncPreference) ?? .foregroundOnly
+        deviceServicesEnabled = try container.decodeIfPresent(Bool.self, forKey: .deviceServicesEnabled) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -283,11 +294,13 @@ struct UserSettings: Codable, Hashable, Sendable {
         try container.encode(userName, forKey: .userName)
         try container.encode(avatarInitials, forKey: .avatarInitials)
         try container.encode(notificationsEnabled, forKey: .notificationsEnabled)
+        try container.encode(notificationConsentEstablished, forKey: .notificationConsentEstablished)
         try container.encode(hapticFeedbackEnabled, forKey: .hapticFeedbackEnabled)
         try container.encode(environment, forKey: .environment)
         try container.encode(relayConfiguration, forKey: .relayConfiguration)
         try container.encode(autoConnectOnLaunch, forKey: .autoConnectOnLaunch)
         try container.encode(locationSyncPreference, forKey: .locationSyncPreference)
+        try container.encode(deviceServicesEnabled, forKey: .deviceServicesEnabled)
     }
 
     func applyingEnvironmentPolicy(

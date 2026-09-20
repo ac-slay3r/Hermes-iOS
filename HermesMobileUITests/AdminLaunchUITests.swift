@@ -2,9 +2,25 @@ import XCTest
 
 final class AdminLaunchUITests: XCTestCase {
     @MainActor
+    func testCombinedShellDefaultsToDashboardAndExposesCompanionTabs() {
+        let app = makeApp()
+        XCTAssertTrue(app.navigationBars["Hermes"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["Dashboard"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Chat"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Device"].exists)
+
+        app.tabBars.buttons["Chat"].tap()
+        XCTAssertTrue(app.staticTexts["Hermes iOS"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Scan QR Code"].exists)
+
+        app.tabBars.buttons["Device"].tap()
+        XCTAssertTrue(app.staticTexts["Hermes iOS"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Enter Code Manually"].exists)
+    }
+
+    @MainActor
     func testDashboardManagementAreasLeadPrimaryNavigation() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = makeApp()
         for label in [
             "Overview & health", "Configuration & models", "Profiles & sessions",
             "Skills, tools & MCP", "Memory & instructions",
@@ -29,8 +45,7 @@ final class AdminLaunchUITests: XCTestCase {
 
     @MainActor
     func testNormalLaunchIsDisconnectedAdministration() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = makeApp()
         XCTAssertTrue(app.staticTexts["Not connected"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Review target"].exists)
         XCTAssertFalse(app.buttons["Start voice mode"].exists)
@@ -39,8 +54,7 @@ final class AdminLaunchUITests: XCTestCase {
 
     @MainActor
     func testTargetReviewIsNotAuthentication() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = makeApp()
         let address = app.textFields["HTTPS dashboard address"]
         XCTAssertTrue(address.waitForExistence(timeout: 5))
         address.tap()
@@ -54,5 +68,16 @@ final class AdminLaunchUITests: XCTestCase {
         XCTAssertTrue(identity.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertEqual(identity.value as? String, "Not authenticated")
         XCTAssertFalse(app.buttons["Apply change"].exists)
+    }
+
+    @MainActor
+    private func makeApp() -> XCUIApplication {
+        let isolationID = UUID().uuidString
+        let app = XCUIApplication()
+        app.launchEnvironment["UITEST_DEFAULTS_SUITE"] = "admin-launch.\(isolationID)"
+        app.launchEnvironment["UITEST_KEYCHAIN_SERVICE"] = "cool.n0thing.hermes.uitest.\(isolationID)"
+        app.launchEnvironment["UITEST_PAIRING_MODE"] = "mock"
+        app.launch()
+        return app
     }
 }

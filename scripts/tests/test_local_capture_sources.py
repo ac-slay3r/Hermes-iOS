@@ -11,14 +11,20 @@ class LocalCaptureSourceTests(unittest.TestCase):
     def source(self, relative):
         return (ROOT / relative).read_text()
 
-    def test_launch_has_no_remote_initialization(self):
+    def test_launch_resumes_only_previously_consented_companion_services(self):
         source = self.source("HermesMobile/AppEntry.swift")
-        self.assertNotIn("AppContainer.sharedDefault()", source)
-        self.assertNotIn(".registerForRemoteNotifications()", source)
-        self.assertIn("AdminRoot()", source)
-        self.assertIn("completionHandler(.noData)", source)
-        self.assertIn(".onOpenURL { _ in }", source)
-        self.assertIn("unregisterForRemoteNotifications()", source)
+        container = self.source("HermesMobile/Stores/AppContainer.swift")
+        did_finish = source.split("didFinishLaunchingWithOptions", 1)[1].split("func application(", 1)[0]
+        self.assertIn("AppContainer.sharedDefault().handleSystemLaunch()", did_finish)
+        self.assertNotIn("registerForRemoteNotifications()", did_finish)
+        self.assertNotIn("unregisterForRemoteNotifications()", did_finish)
+        system_launch = container.split("func handleSystemLaunch()", 1)[1].split("private func handlePairingActivated", 1)[0]
+        self.assertIn("notificationConsentEstablished", system_launch)
+        self.assertIn("deviceServicesEnabled", system_launch)
+        self.assertIn("guard resumesDeviceServices || resumesPush else { return }", system_launch)
+        self.assertIn("CombinedAppRoot()", source)
+        self.assertIn("guard container.isCompanionRuntimeActive else { return }", source)
+        self.assertIn("completionHandler(didWork ? .newData : .noData)", source)
 
     def test_carplay_is_gated_before_manager_creation(self):
         source = self.source("HermesMobile/CarPlay/CarPlaySceneDelegate.swift")
@@ -41,10 +47,13 @@ class LocalCaptureSourceTests(unittest.TestCase):
         self.assertIn("AVAudioSession.interruptionNotification", source)
         self.assertNotIn("removeItem", source)
 
-    def test_plist_disables_remote_background_and_carplay(self):
+    def test_plist_limits_background_modes_to_reauthorized_companion_features(self):
         with (ROOT / "HermesMobile/Resources/Info.plist").open("rb") as stream:
             info = plistlib.load(stream)
-        self.assertEqual(info["UIBackgroundModes"], [])
+        self.assertEqual(
+            info["UIBackgroundModes"],
+            ["audio", "location", "remote-notification"],
+        )
         self.assertFalse(info["UIApplicationSceneManifest"]["UIApplicationSupportsMultipleScenes"])
         self.assertNotIn("UISceneConfigurations", info["UIApplicationSceneManifest"])
         for key in ["NSCameraUsageDescription", "NSMicrophoneUsageDescription", "NSSpeechRecognitionUsageDescription"]:

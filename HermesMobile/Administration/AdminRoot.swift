@@ -1,5 +1,86 @@
 import SwiftUI
 
+enum CombinedAppSection: String, CaseIterable, Identifiable {
+    case dashboard
+    case chat
+    case device
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .dashboard: "Dashboard"
+        case .chat: "Chat"
+        case .device: "Device"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .dashboard: "gauge.with.dots.needle.50percent"
+        case .chat: "bubble.left.and.bubble.right"
+        case .device: "iphone.gen3"
+        }
+    }
+}
+
+struct CombinedAppRoot: View {
+    @Environment(AppContainer.self) private var container
+    @State private var selectedSection: CombinedAppSection = .dashboard
+
+    var body: some View {
+        TabView(selection: $selectedSection) {
+            AdminRoot()
+                .tabItem { Label(CombinedAppSection.dashboard.title, systemImage: CombinedAppSection.dashboard.icon) }
+                .tag(CombinedAppSection.dashboard)
+
+            AppRootView()
+                .tabItem { Label(CombinedAppSection.chat.title, systemImage: CombinedAppSection.chat.icon) }
+                .tag(CombinedAppSection.chat)
+
+            DeviceAccessRoot()
+                .tabItem { Label(CombinedAppSection.device.title, systemImage: CombinedAppSection.device.icon) }
+                .tag(CombinedAppSection.device)
+        }
+        .tint(Design.Brand.accent)
+        .task(id: selectedSection) {
+            guard selectedSection != .dashboard else { return }
+            await container.activateCompanionRuntime()
+        }
+        .onChange(of: selectedSection) { _, _ in
+            container.router.dismissSheet()
+            container.router.popToRoot()
+        }
+    }
+}
+
+struct DeviceAccessRoot: View {
+    @Environment(AppContainer.self) private var container
+    @Environment(TabRouter.self) private var router
+
+    var body: some View {
+        @Bindable var router = router
+        NavigationStack(path: router.pathBinding()) {
+            Group {
+                if !container.pairingStore.isPaired {
+                    ConnectHermesScreen()
+                } else if container.pairingStore.needsPermissionsOnboarding {
+                    PermissionsOnboardingScreen()
+                } else {
+                    SettingsScreen(showsDismissButton: false)
+                }
+            }
+            .navigationDestination(for: Route.self) { route in
+                switch route {
+                case .permissions: PermissionsScreen()
+                case .capture: CaptureScreen()
+                case .connectHost: ConnectHermesHostScreen()
+                }
+            }
+        }
+    }
+}
+
 /// Frozen legacy entry points cannot start remote sessions in the admin slice.
 enum AdminLaunchPolicy {
     static let legacyRemoteEnabled = false

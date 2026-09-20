@@ -34,7 +34,7 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Hermes uses the camera to capture photos and documents for analysis.</string>
+	<string>Hermes uses the camera only for an explicitly started live voice camera or a Chat image attachment.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Hermes reads your health data to offer personalized wellness insights.</string>
 	<key>NSHealthUpdateUsageDescription</key>
@@ -44,11 +44,11 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Hermes uses your location to provide contextual recommendations and nearby suggestions.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Hermes records voice captures on this device. Recordings are not uploaded.</string>
+	<string>Hermes uses microphone audio for explicit Chat dictation or an explicitly started live voice session; live voice audio is sent to your paired Hermes service.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Hermes uses motion data to understand your current activity for contextual awareness.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Hermes accesses your photo library to help organize and search your photos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Hermes saves an image to your photo library only when you explicitly tap Save.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Hermes transcribes recordings on this device only, when offline recognition is supported.</string>
 	<key>NSSupportsLiveActivities</key>
@@ -56,7 +56,11 @@
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
 	<true/>
 	<key>UIBackgroundModes</key>
-	<array/>
+	<array>
+		<string>audio</string>
+		<string>location</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

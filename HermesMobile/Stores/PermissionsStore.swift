@@ -99,7 +99,6 @@ final class PermissionsStore {
             DeviceCapability(permissionType: .notifications, status: notificationService.authorizationStatus),
             DeviceCapability(permissionType: .microphone, status: microphoneAuthorizationStatus()),
             DeviceCapability(permissionType: .camera, status: mediaService.cameraAuthorizationStatus),
-            DeviceCapability(permissionType: .photos, status: mediaService.photosAuthorizationStatus),
             DeviceCapability(permissionType: .motion, status: motionService?.authorizationStatus ?? .unsupported),
             DeviceCapability(permissionType: .speechRecognition, status: speechRecognitionStatus()),
         ]

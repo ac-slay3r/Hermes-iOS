@@ -27,10 +27,11 @@ class BaseUIPolishSourceTests(unittest.TestCase):
         self.assertIn('displayStatus(isStreaming:', rail)
         self.assertIn('Show tool activity details', rail)
 
-    def test_preview_has_no_services_and_launch_is_unchanged(self):
+    def test_preview_has_no_services_and_combined_launch_is_explicit(self):
         entry = source("HermesMobile/AppEntry.swift")
-        self.assertIn('AdminRoot()', entry)
-        self.assertNotIn('AppContainer.shared', entry)
+        self.assertIn('CombinedAppRoot()', entry)
+        self.assertIn('guard container.isCompanionRuntimeActive else { return }', entry)
+        self.assertNotIn('.task { await container.initialize() }', entry)
         composer = source("HermesMobile/Features/Chat/ChatInputBar.swift")
         self.assertIn('struct ChatComposerLab: View {', composer)
         self.assertLess(composer.index('struct ChatComposerLab: View {'), composer.index('#if DEBUG'))

@@ -41,7 +41,6 @@ final class HermesMobileUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
-        throw XCTSkip("Legacy pairing/chat product is frozen; AdminLaunchUITests verifies the administration entry point.")
     }
 
     @MainActor
@@ -49,6 +48,7 @@ final class HermesMobileUITests: XCTestCase {
         let context = UITestLaunchContext()
         let app = makeApp(context: context)
         app.launch()
+        openChat(in: app)
 
         XCTAssertTrue(app.buttons["Enter Code Manually"].waitForExistence(timeout: 5))
         completePairing(in: app, setupCode: context.setupCode)
@@ -92,6 +92,7 @@ final class HermesMobileUITests: XCTestCase {
 
         let relaunchedApp = makeApp(context: context)
         relaunchedApp.launch()
+        openChat(in: relaunchedApp)
 
         XCTAssertFalse(relaunchedApp.buttons["Enter Code Manually"].waitForExistence(timeout: 2))
         XCTAssertTrue(composerInput(in: relaunchedApp).waitForExistence(timeout: 5))
@@ -112,6 +113,8 @@ final class HermesMobileUITests: XCTestCase {
         let disconnectButton = app.buttons["Disconnect"]
         XCTAssertTrue(disconnectButton.waitForExistence(timeout: 5))
         disconnectButton.tap()
+        XCTAssertTrue(app.buttons["Disconnect Device"].waitForExistence(timeout: 5))
+        app.buttons["Disconnect Device"].tap()
 
         XCTAssertTrue(app.buttons["Enter Code Manually"].waitForExistence(timeout: 5))
     }
@@ -130,6 +133,24 @@ final class HermesMobileUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Connect Host"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Disconnect"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testDeviceTabExposesSettingsWithDataSyncOffByDefault() throws {
+        let context = UITestLaunchContext()
+        let app = makeApp(context: context)
+        app.launch()
+        completePairing(in: app, setupCode: context.setupCode)
+
+        app.tabBars.buttons["Device"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        let deviceSync = app.switches["Device Data Sync"]
+        for _ in 0..<8 where !deviceSync.exists {
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(deviceSync.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(deviceSync.value as? String, "0")
+        XCTAssertTrue(app.buttons["Permissions"].exists)
     }
 
     @MainActor
@@ -152,6 +173,7 @@ final class HermesMobileUITests: XCTestCase {
 
     @MainActor
     private func completePairing(in app: XCUIApplication, setupCode: String) {
+        openChat(in: app)
         app.buttons["Enter Code Manually"].tap()
 
         let setupCodeField = app.textFields["Setup code"]
@@ -178,6 +200,13 @@ final class HermesMobileUITests: XCTestCase {
         continueButton.tap()
 
         XCTAssertTrue(composerInput(in: app).waitForExistence(timeout: 8))
+    }
+
+    @MainActor
+    private func openChat(in app: XCUIApplication) {
+        let chatTab = app.tabBars.buttons["Chat"]
+        XCTAssertTrue(chatTab.waitForExistence(timeout: 5))
+        chatTab.tap()
     }
 
     @MainActor

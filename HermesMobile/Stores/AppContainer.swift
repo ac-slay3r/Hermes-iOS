@@ -22,6 +22,8 @@ final class AppContainer {
     private var isInitialized = false
     private var hasFinishedLaunchAttempt = false
     private var isInitializing = false
+    private(set) var isCompanionRuntimeActive = false
+    private var pushOperationGeneration: UInt64 = 0
     private var lastCommandCatalogRefreshAt: Date?
     private var lastKnownHostOnline = false
 
@@ -245,23 +247,6 @@ final class AppContainer {
             usesMockPairingService: usesMockPairingService
         )
 
-        let refreshUnpairedRelayContext: @MainActor () async -> Void = { [weak sessionStore, weak container] in
-            guard container?.pairingStore.isPaired == false else { return }
-            await sessionStore?.clearSession()
-            guard let relayBaseURL = container?.settingsStore.settings.relayConfiguration.activeBaseURLString,
-                  !relayBaseURL.isEmpty else { return }
-            _ = relayBaseURL
-            await sessionStore?.bootstrap(forceRegistration: true)
-            await container?.inboxStore.loadInbox(force: true)
-        }
-
-        settingsStore.onEnvironmentChanged = { _ in
-            await refreshUnpairedRelayContext()
-        }
-        settingsStore.onRelayConfigurationChanged = { _ in
-            await refreshUnpairedRelayContext()
-        }
-
         runtimePairingStore.onPairingChanged = { [weak container] isPaired in
             if isPaired {
                 await container?.handlePairingActivated()
@@ -316,16 +301,17 @@ final class AppContainer {
         await inboxStore.loadInbox()
         await refreshCommandCatalog(force: true)
         await registerStoredPushTokenIfNeeded()
-        sensorUploadService?.start()
-        await sensorUploadService?.handleAppDidBecomeActive()
+        await activateDeviceServicesIfEnabled()
         reconcileLiveActivities()
         updateWidgetData()
         isInitialized = true
     }
 
     func handleAppDidBecomeActive() async {
+        guard isCompanionRuntimeActive else { return }
         guard pairingStore.isPaired else { return }
         if !isInitialized || sessionStore.state.connectionStatus == .error {
+            guard settingsStore.settings.autoConnectOnLaunch else { return }
             await initialize()
         }
         guard pairingStore.isPaired else { return }
@@ -336,7 +322,7 @@ final class AppContainer {
         lastKnownHostOnline = hostStore.isHostOnline
         await refreshCommandCatalog(force: true)
         await registerStoredPushTokenIfNeeded()
-        await sensorUploadService?.handleAppDidBecomeActive()
+        await activateDeviceServicesIfEnabled()
         talkStore.handleAppDidBecomeActive()
         await talkStore.refreshReadiness()
         reconcileLiveActivities()
@@ -344,9 +330,14 @@ final class AppContainer {
         updateWidgetData()
     }
 
-    func handleRemoteNotificationWake() async {
-        guard pairingStore.isPaired else { return }
-        guard await sessionStore.currentAccessToken() != nil else { return }
+    func handleRemoteNotificationWake() async -> Bool {
+        guard settingsStore.settings.notificationConsentEstablished,
+              settingsStore.settings.notificationsEnabled,
+              storedPushToken != nil
+        else { return false }
+        guard pairingStore.isPaired else { return false }
+        guard await sessionStore.currentAccessToken() != nil else { return false }
+        isCompanionRuntimeActive = true
 
         await permissionsStore.reloadCapabilities()
         await hostStore.refresh()
@@ -357,34 +348,82 @@ final class AppContainer {
         await talkStore.refreshReadiness()
         reconcileLiveActivities()
         updateWidgetData()
+        return true
     }
 
     func handleSystemLaunch() async {
         guard pairingStore.isPaired else { return }
+        let resumesDeviceServices = settingsStore.settings.deviceServicesEnabled
+        let resumesPush = settingsStore.settings.notificationConsentEstablished
+            && settingsStore.settings.notificationsEnabled
+        guard resumesDeviceServices || resumesPush else { return }
         guard await sessionStore.currentAccessToken() != nil else { return }
+        isCompanionRuntimeActive = true
 
-        sensorUploadService?.start()
-        await sensorUploadService?.handleSystemLaunch()
-        await registerStoredPushTokenIfNeeded()
-        await talkStore.refreshReadiness()
-        reconcileLiveActivities()
-        await reportAppStateIfNeeded("foreground")
+        if resumesDeviceServices {
+            sensorUploadService?.start()
+            await sensorUploadService?.handleSystemLaunch()
+        }
+        if resumesPush {
+            await registerStoredPushTokenIfNeeded()
+        }
     }
 
     private func handlePairingActivated() async {
+        guard isCompanionRuntimeActive else { return }
         isInitialized = false
         hasFinishedLaunchAttempt = false
         chatStore.reset()
         inboxStore.reset()
         await initialize()
-
-        // Start sensor data pipeline
-        sensorUploadService?.start()
         await talkStore.refreshReadiness()
+    }
+
+    func activateCompanionRuntime() async {
+        isCompanionRuntimeActive = true
+        await initialize()
+    }
+
+    func setDeviceServicesEnabled(_ enabled: Bool) async {
+        settingsStore.settings.deviceServicesEnabled = enabled
+        await activateDeviceServicesIfEnabled()
+    }
+
+    func setNotificationsEnabled(_ enabled: Bool) async {
+        settingsStore.settings.notificationConsentEstablished = true
+        settingsStore.settings.notificationsEnabled = enabled
+        let generation = beginPushOperation()
+        if enabled {
+            await registerStoredPushTokenIfNeeded(generation: generation)
+        } else {
+            await deactivatePushRegistration()
+            guard generation == pushOperationGeneration else {
+                await reconcilePushRegistrationIfNeeded(staleGeneration: generation)
+                return
+            }
+            await notificationService?.markPushTokenRegistered(false)
+            sessionStore.state.pushTokenRegistered = false
+        }
+    }
+
+    private func activateDeviceServicesIfEnabled() async {
+        guard settingsStore.settings.deviceServicesEnabled else {
+            sensorUploadService?.stop()
+            sensorUploadService?.resetOutbox()
+            return
+        }
+        guard isCompanionRuntimeActive, pairingStore.isPaired else { return }
+        sensorUploadService?.start()
+        await sensorUploadService?.handleAppDidBecomeActive()
     }
 
     /// Registers the APNs device token with the relay so it can send silent push notifications.
     func registerPushTokenIfNeeded(_ token: String) async {
+        let generation = beginPushOperation()
+        await registerPushTokenIfNeeded(token, generation: generation)
+    }
+
+    private func registerPushTokenIfNeeded(_ token: String, generation: UInt64) async {
         guard pairingStore.isPaired,
               let apiClient,
               let notificationService
@@ -397,6 +436,10 @@ final class AppContainer {
             // Always attempt deactivation — the relay may have an active
             // registration from a previous session even if the local flag is false.
             await deactivatePushRegistration()
+            guard generation == pushOperationGeneration else {
+                await reconcilePushRegistrationIfNeeded(staleGeneration: generation)
+                return
+            }
             await notificationService.markPushTokenRegistered(false)
             sessionStore.state.pushTokenRegistered = false
             return
@@ -406,12 +449,19 @@ final class AppContainer {
         guard !normalizedToken.isEmpty else { return }
 
         await notificationService.updatePushToken(normalizedToken)
+        guard generation == pushOperationGeneration,
+              settingsStore.settings.notificationsEnabled
+        else { return }
 
         guard let accessToken = await sessionStore.currentAccessToken() else {
+            guard generation == pushOperationGeneration else { return }
             await notificationService.markPushTokenRegistered(false)
             sessionStore.state.pushTokenRegistered = false
             return
         }
+        guard generation == pushOperationGeneration,
+              settingsStore.settings.notificationsEnabled
+        else { return }
 
         if notificationService.isPushTokenRegistered,
            notificationService.currentPushToken == normalizedToken {
@@ -456,9 +506,14 @@ final class AppContainer {
                 body: body,
                 accessToken: accessToken
             )
+            guard generation == pushOperationGeneration else {
+                await reconcilePushRegistrationIfNeeded(staleGeneration: generation)
+                return
+            }
             await notificationService.markPushTokenRegistered(true)
             sessionStore.state.pushTokenRegistered = true
         } catch {
+            guard generation == pushOperationGeneration else { return }
             // Non-critical — token will be retried on next app launch
             await notificationService.markPushTokenRegistered(false)
             sessionStore.state.pushTokenRegistered = false
@@ -480,11 +535,44 @@ final class AppContainer {
         ) as DeactivateResponse
     }
 
-    private func registerStoredPushTokenIfNeeded() async {
-        guard let storedToken = UserDefaults.standard.string(forKey: Self.apnsTokenDefaultsKey) else {
+    private func reconcilePushRegistrationIfNeeded(staleGeneration: UInt64) async {
+        guard staleGeneration != pushOperationGeneration else { return }
+        let currentGeneration = pushOperationGeneration
+
+        if settingsStore.settings.notificationsEnabled {
+            await notificationService?.markPushTokenRegistered(false)
+            guard currentGeneration == pushOperationGeneration else {
+                await reconcilePushRegistrationIfNeeded(staleGeneration: currentGeneration)
+                return
+            }
+            sessionStore.state.pushTokenRegistered = false
+            await registerStoredPushTokenIfNeeded(generation: currentGeneration)
+        } else {
+            await deactivatePushRegistration()
+            guard currentGeneration == pushOperationGeneration else {
+                await reconcilePushRegistrationIfNeeded(staleGeneration: currentGeneration)
+                return
+            }
+            await notificationService?.markPushTokenRegistered(false)
+            sessionStore.state.pushTokenRegistered = false
+        }
+    }
+
+    private var storedPushToken: String? {
+        UserDefaults.standard.string(forKey: Self.apnsTokenDefaultsKey)
+    }
+
+    private func beginPushOperation() -> UInt64 {
+        pushOperationGeneration &+= 1
+        return pushOperationGeneration
+    }
+
+    private func registerStoredPushTokenIfNeeded(generation: UInt64? = nil) async {
+        guard let storedToken else {
             return
         }
-        await registerPushTokenIfNeeded(storedToken)
+        let resolvedGeneration = generation ?? beginPushOperation()
+        await registerPushTokenIfNeeded(storedToken, generation: resolvedGeneration)
     }
 
     /// Fetches the dynamic slash command catalog from the connected Hermes host.

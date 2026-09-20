@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import UserNotifications
 
 @MainActor
@@ -18,6 +19,9 @@ final class LiveNotificationService: NotificationServiceProtocol {
         do {
             let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
             authorizationStatus = granted ? .authorized : .denied
+            if granted {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
         } catch {
             authorizationStatus = .denied
         }

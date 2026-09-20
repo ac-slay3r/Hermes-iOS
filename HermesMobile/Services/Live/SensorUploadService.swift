@@ -123,6 +123,8 @@ final class SensorUploadService {
 
     private var isActive = false
     private var isDraining = false
+    private var drainGeneration: UInt64 = 0
+    private var currentUploadTask: Task<Bool, Never>?
     private var outboxState: SensorOutboxState
 
     private let iso8601Formatter: ISO8601DateFormatter = {
@@ -160,22 +162,31 @@ final class SensorUploadService {
         locationService.onLocationUpdate = { [weak self] update in
             guard let self else { return }
             Task { @MainActor in
+                guard self.isActive else { return }
+                let generation = self.drainGeneration
                 self.outboxState.enqueue(location: update)
                 self.persistOutboxState()
-                await self.drainOutboxIfPossible()
+                await self.drainOutboxIfPossible(generation: generation)
             }
         }
 
         healthService.onHealthUpdate = { [weak self] changedIdentifiers in
             guard let self else { return }
             Task { @MainActor in
-                await self.captureHealthSnapshot(changedIdentifiers: changedIdentifiers)
+                guard self.isActive else { return }
+                let generation = self.drainGeneration
+                await self.captureHealthSnapshot(
+                    generation: generation,
+                    changedIdentifiers: changedIdentifiers
+                )
             }
         }
 
         motionService?.onActivityUpdate = { [weak self] activityCode in
             guard let self else { return }
             Task { @MainActor in
+                guard self.isActive else { return }
+                let generation = self.drainGeneration
                 let now = Date()
                 let sample = HealthSnapshot.Sample(
                     metric: "user_activity",
@@ -186,7 +197,7 @@ final class SensorUploadService {
                 )
                 self.outboxState.enqueue(healthSamples: [sample])
                 self.persistOutboxState()
-                await self.drainOutboxIfPossible()
+                await self.drainOutboxIfPossible(generation: generation)
             }
         }
 
@@ -197,7 +208,9 @@ final class SensorUploadService {
 
     func stop() {
         isActive = false
-        isDraining = false
+        invalidateDrain()
+        currentUploadTask?.cancel()
+        currentUploadTask = nil
         locationService.onLocationUpdate = nil
         healthService.onHealthUpdate = nil
         motionService?.onActivityUpdate = nil
@@ -207,26 +220,32 @@ final class SensorUploadService {
     }
 
     func resetOutbox() {
+        invalidateDrain()
+        currentUploadTask?.cancel()
+        currentUploadTask = nil
         outboxState = SensorOutboxState()
         persistence.clearSensorOutboxState()
     }
 
     func handleAppDidBecomeActive() async {
         guard isActive else { return }
+        let generation = drainGeneration
 
         locationService.requestSingleLocation()
-        await captureHealthSnapshot(forceFullRefresh: true)
-        await drainOutboxIfPossible()
+        await captureHealthSnapshot(generation: generation, forceFullRefresh: true)
+        await drainOutboxIfPossible(generation: generation)
     }
 
     func handleSystemLaunch() async {
         guard isActive else { return }
+        let generation = drainGeneration
 
-        await captureHealthSnapshot()
-        await drainOutboxIfPossible()
+        await captureHealthSnapshot(generation: generation)
+        await drainOutboxIfPossible(generation: generation)
     }
 
     private func captureHealthSnapshot(
+        generation: UInt64,
         forceFullRefresh: Bool = false,
         changedIdentifiers: Set<String>? = nil
     ) async {
@@ -238,38 +257,65 @@ final class SensorUploadService {
         else {
             return
         }
+        guard isActive, generation == drainGeneration, !Task.isCancelled else { return }
         guard !snapshot.samples.isEmpty else { return }
         outboxState.enqueue(healthSamples: snapshot.samples)
         SharedWidgetDataStore.updateHealthMetrics(from: snapshot.samples)
         persistOutboxState()
-        await drainOutboxIfPossible()
+        await drainOutboxIfPossible(generation: generation)
     }
 
-    private func drainOutboxIfPossible() async {
+    private func drainOutboxIfPossible(generation: UInt64) async {
         guard !isDraining else { return }
         guard isActive else { return }
         guard isPairedProvider() else { return }
+        guard generation == drainGeneration, !Task.isCancelled else { return }
+        isDraining = true
+        defer {
+            isDraining = false
+            if isActive, generation != drainGeneration {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    await self.drainOutboxIfPossible(generation: self.drainGeneration)
+                }
+            }
+        }
 
         guard let accessToken = await accessTokenProvider(), !accessToken.isEmpty else {
             return
         }
         _ = accessToken
+        guard generation == drainGeneration, isActive else { return }
 
-        isDraining = true
-        defer { isDraining = false }
-
-        while isActive && isPairedProvider() {
+        while generation == drainGeneration && isActive && isPairedProvider() {
             if let pendingLocation = outboxState.pendingLocation {
-                let delivered = await uploadLocation(pendingLocation)
+                let uploadTask = Task { @MainActor [weak self] in
+                    guard let self, !Task.isCancelled else { return false }
+                    return await self.uploadLocation(pendingLocation)
+                }
+                currentUploadTask = uploadTask
+                let delivered = await uploadTask.value
+                currentUploadTask = nil
+                guard generation == drainGeneration, isActive else { return }
                 guard delivered else { break }
+                guard outboxState.pendingLocation == pendingLocation else { continue }
                 outboxState.pendingLocation = nil
                 persistOutboxState()
                 continue
             }
 
             if !outboxState.pendingHealthSamples.isEmpty {
-                let delivered = await uploadHealth(outboxState.pendingHealthSamples)
+                let pendingHealthSamples = outboxState.pendingHealthSamples
+                let uploadTask = Task { @MainActor [weak self] in
+                    guard let self, !Task.isCancelled else { return false }
+                    return await self.uploadHealth(pendingHealthSamples)
+                }
+                currentUploadTask = uploadTask
+                let delivered = await uploadTask.value
+                currentUploadTask = nil
+                guard generation == drainGeneration, isActive else { return }
                 guard delivered else { break }
+                guard outboxState.pendingHealthSamples == pendingHealthSamples else { continue }
                 outboxState.pendingHealthSamples.removeAll()
                 persistOutboxState()
                 continue
@@ -277,6 +323,10 @@ final class SensorUploadService {
 
             break
         }
+    }
+
+    private func invalidateDrain() {
+        drainGeneration &+= 1
     }
 
     private func persistOutboxState() {
@@ -290,6 +340,7 @@ final class SensorUploadService {
     private func uploadLocation(_ pending: SensorOutboxState.PendingLocation) async -> Bool {
         // Reverse geocode to get a human-readable address
         let address = await reverseGeocode(latitude: pending.latitude, longitude: pending.longitude)
+        guard !Task.isCancelled else { return false }
 
         let body = SensorLocationBody(
             latitude: pending.latitude,
@@ -352,12 +403,15 @@ final class SensorUploadService {
     }
 
     private func performAuthorizedUpload<Body: Encodable>(path: String, body: Body) async -> Bool {
+        guard !Task.isCancelled else { return false }
         do {
             return try await executeUpload(path: path, body: body, accessToken: await accessTokenProvider())
         } catch RelayAPIClient.ClientError.unauthorized {
+            guard !Task.isCancelled else { return false }
             guard let refreshedToken = await accessTokenRefresher(), !refreshedToken.isEmpty else {
                 return false
             }
+            guard !Task.isCancelled else { return false }
             return (try? await executeUpload(path: path, body: body, accessToken: refreshedToken)) ?? false
         } catch {
             return false
@@ -365,6 +419,7 @@ final class SensorUploadService {
     }
 
     private func executeUpload<Body: Encodable>(path: String, body: Body, accessToken: String?) async throws -> Bool {
+        guard !Task.isCancelled else { return false }
         guard let accessToken, !accessToken.isEmpty else {
             return false
         }

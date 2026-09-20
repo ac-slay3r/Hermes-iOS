@@ -105,8 +105,13 @@ struct ChatScreen: View {
             modelStatusChip
         }
         ToolbarItem(placement: .topBarTrailing) {
-            GlassCircleButton(icon: "gearshape", accessibilityLabel: "Open settings") {
-                router.presentSheet(.settings)
+            HStack(spacing: Design.Spacing.xs) {
+                GlassCircleButton(icon: "waveform", accessibilityLabel: "Start voice mode") {
+                    router.isVoiceOverlayPresented = true
+                }
+                GlassCircleButton(icon: "gearshape", accessibilityLabel: "Open settings") {
+                    router.presentSheet(.settings)
+                }
             }
         }
     }

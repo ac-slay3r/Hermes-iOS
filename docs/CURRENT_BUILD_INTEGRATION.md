@@ -4,15 +4,19 @@ This document is authoritative for current launch reachability and validation bo
 
 ## Current product contract
 
-Hermes iOS is the native client for Hermes web-dashboard features and configuration. The dashboard's shipped capability set and source-verified APIs define the roadmap. The app preserves the charcoal/gold native visual system and translates dashboard tasks into mobile workflows.
+Hermes iOS combines native dashboard administration with the existing paired relay companion. Dashboard remains the default launch tab and its PKCE credentials remain isolated from relay/device pairing. Chat and Device are explicit secondary tabs.
 
-Local capture, OCR, recording, local intelligence, intake, sensors, timeline, composer-lab, legacy chat, and voice implementations are preserved historical work. They are frozen and absent from normal-launch primary navigation unless explicitly reauthorized.
+Paired chat, voice entry, host connection, relay settings, notifications, and device permission controls are explicitly reauthorized. Device-data synchronization for location, health, and motion is independently persisted, off by default, and starts only after opt-in. Local capture, OCR, local intelligence, intake, timeline, and composer-lab remain frozen.
 
 ## Reachability from the current source
 
 | Surface | Current state | Boundary |
 | --- | --- | --- |
-| Administration launch | Reachable at normal launch | Does not construct `AppContainer`, start sensors/voice/relay, register push, or open legacy remote deep links. |
+| Combined launch | Reachable at normal launch | Presents Dashboard, Chat, and Device with Dashboard selected. A fresh installation does not bootstrap relay, prompt permissions, register push, start voice, or monitor sensors. Previously persisted notification or Device Data Sync consent resumes only its corresponding companion service. |
+| Relay chat | Reachable from Chat | Unpaired devices see QR/manual pairing. Paired devices initialize relay chat only after explicit Chat/Device entry. Dashboard credentials never satisfy relay pairing. |
+| Device settings | Reachable from Device | Exposes connection, host, relay, notifications, haptics, location, permissions, system status, and about settings. Destructive host revoke/disconnect actions require confirmation. |
+| Device data synchronization | Reachable from Device settings | Off by default. One explicit toggle controls the legacy location/HealthKit/motion pipeline; each channel also remains constrained by its individual iOS permission. Disabling it cancels in-flight work and clears queued samples. |
+| Companion background execution | Available only for reauthorized features | The app declares only `audio`, `location`, and `remote-notification`: explicit live voice, opt-in background location, and consented silent push. Processing and CarPlay remain disabled. |
 | Dashboard target review | Reachable | Validates an exact HTTPS base URL and lowercase profile identifier. Review is not authentication. |
 | Dashboard management map | Reachable | Shows Overview, Configuration, Profiles/Sessions, Skills/Tools/MCP, Memory/Instructions, Automation/Connections, and System/Operations as the product hierarchy. No controls are falsely unlocked. |
 | Status/identity/profile client boundary | Reachable after target review and sign-in | Requests selected-profile `/api/status`, requires the host's `native_ios_pkce` capability, then verifies `/api/auth/me` before `/api/profiles/active`. |
@@ -20,7 +24,7 @@ Local capture, OCR, recording, local intelligence, intake, sensors, timeline, co
 | Session-title and SOUL correction engines | Implemented with authored XCTest fixtures, unreachable | Review/apply/readback behavior remains locked until approved authentication and transport exist; XCTest has not run on this Linux host. |
 | Production dashboard networking | Implemented; compatible host required | Uses an ephemeral, no-cookie/no-cache, redirect-rejecting transport bound to the reviewed HTTPS origin/base path. Access tokens stay in memory; rotating refresh credentials use this-device-only Keychain storage. No copied token or relay credential reuse. |
 | Local-only experiments | Source preserved, unreachable from `AdminRoot` | Share/Shortcuts targets may still exist structurally; normal launch does not route into local workspace or composer lab. |
-| Legacy connected app | Source preserved, unreachable | Chat, approval inbox, voice overlay, pairing, sensor pipeline, push, CarPlay, and remote containers remain gated off. |
+| Still-frozen surfaces | Source preserved, unreachable | Local capture/workspace, intake UI, timeline experiments, composer lab, CarPlay, and placeholder capture remain outside primary navigation. |
 
 ## First active vertical slice
 
@@ -54,11 +58,10 @@ The general dashboard configuration response is not a proven secret-safe project
 
 - Linux executable source/regression suite: passing after the product correction and first client slice.
 - Swift XCTest/UI test source: added for dashboard hierarchy, request ordering/decoding, exact target binding, and `401` fail-closed behavior.
-- Previous product-correction SHA `36fcbc31c44dfc051bd9c5065e9cc2e4144a3124`: native build and tests passed in GitHub Actions.
-- Current authentication SHA `9e1b09b7b8dc431f66b5f64d60da02b3bebd2f62`: simulator build, native XCTest/UI tests, relay tests, and connector tests passed in exact-SHA GitHub Actions run `35521639784`.
-- Live host authentication: verified by the owner from TestFlight build 17 against `https://dashboard.n0thing.cool`; the replacement build with navigable overview remains pending native CI and TestFlight delivery.
-- Native write/readback: not run and not authorized by this scope decision.
-- TestFlight/release: authentication build 17 is valid and ready for internal testing; any overview replacement requires its own exact-SHA native and signed release gates.
+- Dashboard authentication and overview SHA `a3e96c8e8f61ae26cd3ff1e67675d82950fc3f24`: simulator build, native XCTest/UI tests, relay tests, and connector tests passed in exact-SHA GitHub Actions run `35535969214`; TestFlight build 22 is valid and ready for internal testing.
+- Live dashboard authentication and overview: verified by the owner from TestFlight build 22 against `https://dashboard.n0thing.cool`.
+- Combined Dashboard/Chat/Device source: 100 source/project checks, 70 relay tests, and 88 connector tests pass locally; native compilation, restored companion UI tests, pairing/chat device behavior, and signed delivery remain pending for this uncommitted slice.
+- Native dashboard write/readback: not run and not authorized by this scope decision.
 
 ## Signing and retained targets
 

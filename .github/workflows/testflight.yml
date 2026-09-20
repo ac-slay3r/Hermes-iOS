@@ -112,6 +112,7 @@ jobs:
 
           test "$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/main-profile.plist")" = "$MAIN_PROFILE_NAME"
           test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/main-profile.plist")" = "$TEAM_ID.$MAIN_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$RUNNER_TEMP/main-profile.plist")" = "production"
           test "$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/widget-profile.plist")" = "$WIDGET_PROFILE_NAME"
           test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/widget-profile.plist")" = "$TEAM_ID.$WIDGET_BUNDLE_ID"
           test "$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/share-profile.plist")" = "$SHARE_PROFILE_NAME"
@@ -175,6 +176,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$WIDGET/Info.plist")" = "$MAIN_VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$SHARE/Info.plist")" = "$MAIN_VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$RUNNER_TEMP/main-entitlements.plist")" = "$TEAM_ID.$MAIN_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$RUNNER_TEMP/main-entitlements.plist")" = "production"
           test "$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$RUNNER_TEMP/widget-entitlements.plist")" = "$TEAM_ID.$WIDGET_BUNDLE_ID"
           test "$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$RUNNER_TEMP/share-entitlements.plist")" = "$TEAM_ID.$SHARE_BUNDLE_ID"
           test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$RUNNER_TEMP/main-entitlements.plist")" = "group.cool.n0thing.hermes"
@@ -246,6 +248,9 @@ jobs:
             test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/export-profile.plist")" = "$expected_id"
             codesign -d --entitlements :- "$path" > "$RUNNER_TEMP/export-entitlements.plist"
             test "$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$RUNNER_TEMP/export-entitlements.plist")" = "$expected_id"
+            if test "$path" = "$APP"; then
+              test "$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$RUNNER_TEMP/export-entitlements.plist")" = "production"
+            fi
             test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$RUNNER_TEMP/export-entitlements.plist")" = "group.cool.n0thing.hermes"
           done
 

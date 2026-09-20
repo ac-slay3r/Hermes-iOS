@@ -109,7 +109,7 @@ class AdminSourceTests(unittest.TestCase):
         ]:
             self.assertIn(token, text)
 
-    def test_dashboard_management_leads_navigation_and_local_experiments_are_frozen(self):
+    def test_dashboard_management_leads_combined_navigation(self):
         text = (ROOT / "HermesMobile/Administration/AdminRoot.swift").read_text()
         for token in [
             'Section("Manage Hermes")', 'Overview & health', 'Configuration & models',
@@ -118,17 +118,48 @@ class AdminSourceTests(unittest.TestCase):
         ]:
             self.assertIn(token, text)
         for token in ['Section("Supporting tools")', 'admin.localWorkspace',
-                      'LocalCaptureRoot()', 'ChatComposerLab()', '.fullScreenCover',
+                      'LocalCaptureRoot()', 'ChatComposerLab()',
                       'inboxRoute.requestID']:
             self.assertNotIn(token, text)
         self.assertIn('Not connected', text)
         self.assertNotIn('AppContainer(', text)
 
-    def test_admin_entry_does_not_start_capture_or_remote_container(self):
-        text = (ROOT / "HermesMobile/AppEntry.swift").read_text()
-        self.assertIn("AdminRoot()", text)
-        self.assertNotIn("LocalCaptureRoot()", text)
-        self.assertNotIn("AppContainer.", text)
+    def test_combined_shell_keeps_dashboard_default_and_companion_explicit(self):
+        entry = (ROOT / "HermesMobile/AppEntry.swift").read_text()
+        root = (ROOT / "HermesMobile/Administration/AdminRoot.swift").read_text()
+        self.assertIn("CombinedAppRoot()", entry)
+        self.assertIn("AppContainer.sharedDefault()", entry)
+        for token in ['case dashboard', 'case chat', 'case device', 'TabView(selection:', 'AdminRoot()', 'AppRootView()', 'DeviceAccessRoot()']:
+            self.assertIn(token, root)
+        self.assertIn('private var selectedSection: CombinedAppSection = .dashboard', root)
+        self.assertIn('await container.activateCompanionRuntime()', root)
+        self.assertNotIn('.task { await container.initialize() }', entry)
+
+    def test_device_services_require_explicit_persisted_opt_in(self):
+        settings = (ROOT / "HermesMobile/Models/UserSettings.swift").read_text()
+        container = (ROOT / "HermesMobile/Stores/AppContainer.swift").read_text()
+        screen = (ROOT / "HermesMobile/Features/Settings/SettingsScreen.swift").read_text()
+        self.assertIn('var deviceServicesEnabled: Bool', settings)
+        self.assertIn('deviceServicesEnabled: Bool = false', settings)
+        self.assertIn('var notificationConsentEstablished: Bool', settings)
+        self.assertIn('notificationConsentEstablished = try container.decodeIfPresent', settings)
+        self.assertIn('func setDeviceServicesEnabled(_ enabled: Bool) async', container)
+        self.assertIn('guard settingsStore.settings.deviceServicesEnabled else', container)
+        self.assertIn('title: "Device Data Sync"', screen)
+        self.assertNotIn('AppContainer.sharedDefault()', screen)
+        self.assertIn('await container.setNotificationsEnabled(granted)', screen)
+        self.assertIn('await container.setNotificationsEnabled(false)', screen)
+
+    def test_reauthorized_companion_ui_suite_and_destructive_confirmations(self):
+        ui = (ROOT / "HermesMobileUITests/AppTemplateUITests.swift").read_text()
+        host = (ROOT / "HermesMobile/Features/Settings/ConnectHermesHostScreen.swift").read_text()
+        self.assertNotIn("XCTSkip", ui)
+        self.assertIn('app.tabBars.buttons["Chat"]', ui)
+        self.assertIn('app.tabBars.buttons["Device"]', ui)
+        self.assertIn('app.switches["Device Data Sync"]', ui)
+        self.assertIn('.confirmationDialog(', host)
+        self.assertIn('Button("Revoke Host", role: .destructive)', host)
+        self.assertIn('Button("Disconnect Device", role: .destructive)', host)
 
     def test_no_raw_settings_or_credentials_transport(self):
         folder = ROOT / "HermesMobile/Administration"

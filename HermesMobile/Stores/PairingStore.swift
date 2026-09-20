@@ -79,13 +79,18 @@ final class PairingStore {
         }
     }
 
-    func disconnect() async {
+    func disconnect() async -> Bool {
         isWorking = true
         lastErrorMessage = nil
         defer { isWorking = false }
 
-        await sessionStore.revokeCurrentSession()
+        guard await sessionStore.revokeCurrentSession() else {
+            lastErrorMessage = sessionStore.lastErrorMessage
+                ?? "The remote session could not be revoked. The device remains connected so you can retry safely."
+            return false
+        }
         await clearLocalPairing(notify: true)
+        return true
     }
 
     func completePermissionsOnboarding() {

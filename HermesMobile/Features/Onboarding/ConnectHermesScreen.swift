@@ -67,6 +67,7 @@ struct ConnectHermesScreen: View {
             // Caduceus art
             Text(Self.caduceus)
                 .font(.system(size: 14, design: .monospaced))
+                .accessibilityHidden(true)
                 .foregroundStyle(
                     LinearGradient(
                         colors: [

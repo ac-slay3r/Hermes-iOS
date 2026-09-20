@@ -336,6 +336,28 @@ struct AppStoresTests {
     }
 
     @MainActor
+    private final class FailingRevocationBootstrapService: SessionBootstrapServiceProtocol {
+        var revokeCallCount = 0
+
+        func registerDevice(_ request: DeviceRegistrationRequest) async throws -> SessionBootstrapResponse {
+            try await MockSessionBootstrapService().registerDevice(request)
+        }
+
+        func loadSession(accessToken: String?) async throws -> AppSessionState {
+            try await MockSessionBootstrapService().loadSession(accessToken: accessToken)
+        }
+
+        func refreshAuth(refreshToken: String) async throws -> AuthTokens {
+            try await MockSessionBootstrapService().refreshAuth(refreshToken: refreshToken)
+        }
+
+        func revokeCurrentSession(accessToken: String?) async throws {
+            revokeCallCount += 1
+            throw RelayAPIClient.ClientError.requestFailed("Revocation unavailable.")
+        }
+    }
+
+    @MainActor
     private final class RecordingPairingService: PairingServiceProtocol {
         func normalizePairingCode(_ rawCode: String) throws -> String {
             try PhonePairingCode.normalize(rawCode)
@@ -578,6 +600,29 @@ struct AppStoresTests {
         #expect(bootstrapService.registerCallCount == 1)
         #expect(bootstrapService.lastLoadedAccessToken == "recording-access-token")
         #expect(await secureStore.retrieve(key: "session.accessToken") == "recording-access-token")
+    }
+
+    @Test @MainActor
+    func deviceServicesRequireExplicitPersistedOptIn() async throws {
+        let migrated = try JSONDecoder().decode(UserSettings.self, from: Data(#"{"notificationsEnabled":true}"#.utf8))
+        #expect(migrated.deviceServicesEnabled == false)
+        #expect(migrated.notificationsEnabled == false)
+        #expect(migrated.notificationConsentEstablished == false)
+
+        let consented = UserSettings(notificationsEnabled: true, notificationConsentEstablished: true)
+        #expect(consented.notificationsEnabled)
+
+        let suiteName = "settings-store-device-services-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let persistence = UserDefaultsAppPersistenceStore(defaults: defaults)
+        let settingsStore = SettingsStore(persistence: persistence)
+        #expect(settingsStore.settings.deviceServicesEnabled == false)
+
+        settingsStore.settings.deviceServicesEnabled = true
+        #expect(persistence.loadUserSettings()?.deviceServicesEnabled == true)
     }
 
     @Test @MainActor
@@ -1986,12 +2031,53 @@ struct AppStoresTests {
         let setupCode = makeSetupCode()
         _ = await pairingStore.pair(using: setupCode)
 
-        await pairingStore.disconnect()
+        let disconnected = await pairingStore.disconnect()
 
+        #expect(disconnected)
         #expect(pairingStore.pairedRelayConfiguration == nil)
         #expect(persistence.loadPairedRelayConfiguration() == nil)
         #expect(await secureStore.retrieve(key: "session.accessToken") == nil)
         #expect(sessionStore.state.deviceRegistered == false)
+    }
+
+    @Test @MainActor
+    func pairingStoreDisconnectKeepsCredentialsWhenRemoteRevocationFails() async throws {
+        let suiteName = "pairing-store-revocation-failure-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let persistence = UserDefaultsAppPersistenceStore(defaults: defaults)
+        let secureStore = MockSecureStore()
+        let bootstrap = FailingRevocationBootstrapService()
+        let sessionStore = AppSessionStore(
+            bootstrapService: bootstrap,
+            syncCoordinator: MockSyncCoordinator(),
+            secureStore: secureStore,
+            persistence: persistence,
+            notificationService: MockNotificationService(),
+            environmentProvider: { .production }
+        )
+        let pairingStore = PairingStore(
+            pairingService: RecordingPairingService(),
+            sessionStore: sessionStore,
+            persistence: persistence,
+            onboardingDefaults: defaults,
+            environmentProvider: { .production },
+            relayBaseURLProvider: { "https://relay.example.test/v1" }
+        )
+
+        let paired = await pairingStore.pair(using: makeSetupCode())
+        #expect(paired)
+        let disconnected = await pairingStore.disconnect()
+
+        #expect(!disconnected)
+        #expect(bootstrap.revokeCallCount == 3)
+        #expect(pairingStore.pairedRelayConfiguration != nil)
+        #expect(persistence.loadPairedRelayConfiguration() != nil)
+        let retainedAccessToken = await secureStore.retrieve(key: "session.accessToken")
+        #expect(retainedAccessToken != nil)
+        #expect(sessionStore.state.deviceRegistered)
+        #expect(pairingStore.lastErrorMessage != nil)
     }
 
     @Test @MainActor

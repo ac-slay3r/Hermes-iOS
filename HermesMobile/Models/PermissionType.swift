@@ -60,9 +60,9 @@ enum PermissionType: String, Codable, CaseIterable, Identifiable, Hashable, Send
         case .notifications:
             "Receive timely reminders, task updates, and important alerts from Hermes."
         case .microphone:
-            "Voice conversations with Hermes in Talk Mode."
+            "Explicit Chat dictation and live voice conversations with Hermes."
         case .camera:
-            "Capture photos and documents for Hermes to analyze, annotate, or organize."
+            "Allow the camera when you explicitly start a live voice camera or capture an image attachment in Chat."
         case .photos:
             "Access your photo library to help organize, search, and create albums based on your preferences."
         case .motion:
@@ -72,6 +72,6 @@ enum PermissionType: String, Codable, CaseIterable, Identifiable, Hashable, Send
         }
     }
 
-    /// Permissions shown during onboarding. Camera, Photos, and Speech Recognition are deferred to Settings.
+    /// Permissions shown during onboarding. Camera and Speech Recognition are deferred to Settings.
     static let onboardingPermissions: [PermissionType] = [.location, .notifications, .health, .microphone, .motion]
 }

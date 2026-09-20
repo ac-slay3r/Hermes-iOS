@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PermissionsOnboardingScreen: View {
+    @Environment(AppContainer.self) private var container
     @Environment(PairingStore.self) private var pairingStore
     @Environment(PermissionsStore.self) private var permissionsStore
 
@@ -35,7 +36,7 @@ struct PermissionsOnboardingScreen: View {
                 .font(Design.Typography.heroTitle)
                 .foregroundStyle(Design.Colors.foreground)
 
-            Text("Enable only what you need. You can change these anytime in Settings.")
+            Text("Enable only what you need. Granting access does not turn on Device Data Sync; that remains off until you enable it in the Device tab.")
                 .font(Design.Typography.body)
                 .foregroundStyle(Design.Colors.secondaryForeground)
         }
@@ -96,7 +97,7 @@ struct PermissionsOnboardingScreen: View {
         switch capability.status {
         case .notDetermined:
             Button {
-                Task { await permissionsStore.requestPermission(for: capability.permissionType) }
+                Task { await requestPermission(capability.permissionType) }
             } label: {
                 Text("Enable")
                     .font(Design.Typography.footnote.weight(.semibold))
@@ -107,7 +108,7 @@ struct PermissionsOnboardingScreen: View {
             .background(Design.Brand.accent)
             .clipShape(Capsule())
 
-        case .authorized, .authorizedWhenInUse, .authorizedAlways:
+        case .authorized, .authorizedWhenInUse, .authorizedAlways, .limited:
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 22))
                 .foregroundStyle(.green)
@@ -123,10 +124,25 @@ struct PermissionsOnboardingScreen: View {
                     .foregroundStyle(.orange)
             }
 
-        case .limited, .restricted, .unsupported:
+        case .restricted, .unsupported:
             Image(systemName: "minus.circle")
                 .font(.system(size: 22))
                 .foregroundStyle(Design.Colors.secondaryForeground)
+        }
+    }
+
+    private func requestPermission(_ type: PermissionType) async {
+        await permissionsStore.requestPermission(for: type)
+        guard type == .notifications else { return }
+        await permissionsStore.reloadCapabilities()
+        let status = permissionsStore.capabilities
+            .first(where: { $0.permissionType == .notifications })?.status
+        let enabled = status == .authorized || status == .limited
+        await container.setNotificationsEnabled(enabled)
+        if enabled {
+            UIApplication.shared.registerForRemoteNotifications()
+        } else {
+            UIApplication.shared.unregisterForRemoteNotifications()
         }
     }
 
@@ -155,7 +171,7 @@ struct PermissionsOnboardingScreen: View {
 private extension PermissionStatus {
     var isGranted: Bool {
         switch self {
-        case .authorized, .authorizedWhenInUse, .authorizedAlways: true
+        case .authorized, .authorizedWhenInUse, .authorizedAlways, .limited: true
         default: false
         }
     }
