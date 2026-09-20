@@ -100,9 +100,16 @@ struct LocalCaptureStorageView: View {
             activity.isStoragePresented = false
             activity.isStorageWorking = storageWorking
         }
-        .alert("Storage & backup", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
+        .alert("Storage & backup", isPresented: noticePresented) {
             Button("OK") { notice = nil }
         } message: { Text(notice ?? "") }
+    }
+
+    private var noticePresented: Binding<Bool> {
+        Binding<Bool>(
+            get: { notice != nil },
+            set: { isPresented in if !isPresented { notice = nil } }
+        )
     }
 
     private func cancelWork() {

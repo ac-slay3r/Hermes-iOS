@@ -190,230 +190,293 @@ private struct LocalCaptureLibrary: View {
         let source: LocalImagePicker.Source
     }
 
+    // Keep state in this view; opaque subexpressions bound SwiftUI type inference
+    // without adding a new state owner or moving lifecycle/presentation modifiers.
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    Label("On this device only", systemImage: "iphone.gen3")
-                    Text("No Hermes connection, pairing, or automatic uploads. App-private captures are excluded from backup; deleting the app removes them. Explicit Files exports use your chosen destination.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                Section {
-                    Button("Open local inbox", systemImage: "tray", action: openInbox)
-                        .disabled(controlsDisabled)
-                    Text("Share one plain-text item or HTTP/HTTPS link from another app, preview, then Save. Shortcuts: Save text to local inbox (confirmation required) or Open local inbox. No link fetching or agent connection.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    NavigationLink("Storage & backup") {
-                        LocalCaptureStorageView(store: store, activity: activity).onAppear { audio.stopPlayback() }
-                    }
-                        .disabled(controlsDisabled)
-                        .accessibilityIdentifier("capture.storage")
-                }
-                Section("Capture") {
-                    Button("New text note", systemImage: "square.and.pencil") {
-                        do { editor = try store.create(kind: .note, title: "New note"); syncActivity() }
-                        catch { errorMessage = error.localizedDescription }
-                    }.disabled(controlsDisabled)
-                    Button("Take photo", systemImage: "camera") { prepareCamera(document: false) }
-                        .disabled(controlsDisabled)
-                    Button("Import photo", systemImage: "photo") {
-                        guard pendingImages.isEmpty else { errorMessage = "Save the pending import first."; return }
-                        picker = PickerChoice(source: .library)
-                        syncActivity()
-                    }.disabled(controlsDisabled)
-                    Text("The system photo picker may download an iCloud original you select. OCR and storage stay on this device.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("Scan document", systemImage: "doc.viewfinder") { prepareCamera(document: true) }
-                        .disabled(controlsDisabled)
-                    if audio.isRecording {
-                        Label("Microphone recording", systemImage: "mic.fill")
-                            .foregroundStyle(.red).accessibilityLabel("Microphone is recording")
-                        Button("Stop recording", systemImage: "stop.circle.fill") { audio.stop(); syncActivity() }
-                            .tint(.red).accessibilityIdentifier("capture.stopRecording")
-                    } else {
-                        Button(audio.isStarting ? "Requesting microphone…" : "Record voice", systemImage: "mic") {
-                            activity.isMediaBusy = true
-                            Task { await audio.start(store: store); syncActivity() }
-                        }.disabled(controlsDisabled)
-                    }
-                }
-                if !pendingImages.isEmpty {
-                    Section("Unsaved import") {
-                        Text("Saving failed. These images remain in memory while this screen is open.")
-                        Button("Retry saving import") { saveImages() }
-                        Button("Discard pending import", role: .destructive) { discardingPendingImages = true }
-                    }
-                }
-                Section("Library filters") {
-                    Picker("Show", selection: $query.scope) {
-                        ForEach(LocalCaptureLibraryScope.allCases, id: \.self) { scope in
-                            Text(scope.rawValue).tag(scope)
-                        }
-                    }.pickerStyle(.menu).accessibilityIdentifier("capture.scope")
-                    Picker("Kind", selection: $query.kind) {
-                        Text("All kinds").tag(Optional<LocalCapture.Kind>.none)
-                        ForEach(LocalCapture.Kind.allCases, id: \.self) { kind in
-                            Text(kind.rawValue.capitalized).tag(Optional(kind))
-                        }
-                    }.pickerStyle(.menu).accessibilityIdentifier("capture.kind")
-                    if !query.text.isEmpty || query.kind != nil || query.scope != .active {
-                        Button("Reset library filters") { query = LocalCaptureLibraryQuery() }
-                    }
-                }
-                Section(query.scope == .archived ? "Archived captures" : "Saved captures") {
-                    if visibleCaptures.isEmpty {
-                        Text(store.captures.isEmpty ? "Your notes, photos, scans, and recordings will appear here." : "No captures match these filters. Archived captures are shown only in Archived.")
-                    }
-                    ForEach(visibleCaptures) { capture in
-                        VStack(alignment: .leading, spacing: 8) {
-                            Button { editor = capture; syncActivity() } label: {
-                                VStack(alignment: .leading) {
-                                    Text(capture.title.isEmpty ? "Untitled capture" : capture.title).font(.headline)
-                                    Text(capture.kind.rawValue.capitalized + " · " + capture.createdAt.formatted()).font(.caption)
-                                    if !capture.text.isEmpty { Text(capture.text).lineLimit(2) }
-                                }
-                            }.accessibilityLabel("Review \(capture.title)")
-                                .disabled(controlsDisabled)
-                            if capture.kind == .voice {
-                                HStack {
-                                    Button(audio.playingID == capture.id ? "Stop playback" : "Play recording") {
-                                        if audio.playingID == capture.id { audio.stopPlayback() }
-                                        else { audio.play(capture, store: store) }
-                                        syncActivity()
-                                    }
-                                    Button("Transcribe offline") {
-                                        activity.isMediaBusy = true
-                                        Task { await audio.transcribe(capture, store: store); syncActivity() }
-                                    }
-                                        .disabled(controlsDisabled)
-                                }.disabled(controlsDisabled && audio.playingID != capture.id)
-                            } else if !capture.attachments.isEmpty {
-                                Button("Recognize text on device") { recognize(capture) }.disabled(controlsDisabled)
-                            }
-                            if capture.isPinned { Label("Pinned", systemImage: "pin.fill").font(.caption) }
-                            Button {
-                                checklist = capture
-                                syncActivity()
-                            } label: {
-                                Label("Checklist · \(capture.tasks.filter { $0.isCompleted }.count)/\(capture.tasks.count)", systemImage: "checklist")
-                            }
-                            .accessibilityLabel("Checklist for \(capture.title)")
-                            .accessibilityIdentifier("capture.checklist")
-                            .disabled(controlsDisabled)
-                            Menu {
-                                Button(capture.isPinned ? "Unpin capture" : "Pin capture", systemImage: capture.isPinned ? "pin.slash" : "pin") {
-                                    do { try store.setPinned(!capture.isPinned, captureID: capture.id) }
-                                    catch { errorMessage = error.localizedDescription }
-                                }
-                                Button(capture.isArchived ? "Unarchive capture" : "Archive capture", systemImage: "archivebox") {
-                                    do {
-                                        try store.setArchived(!capture.isArchived, captureID: capture.id)
-                                        if audio.playingID == capture.id { audio.stopPlayback() }
-                                    } catch { errorMessage = error.localizedDescription }
-                                }
-                                Button("Delete capture", role: .destructive) { deleting = capture; syncActivity() }
-                            } label: {
-                                Label("Capture actions", systemImage: "ellipsis.circle")
-                            }
-                            .accessibilityLabel("Actions for \(capture.title)")
-                            .accessibilityIdentifier("capture.actions")
-                            .disabled(controlsDisabled)
-                        }.buttonStyle(.borderless)
-                    }
-                }
-                if recognizing { ProgressView("Recognizing text on device") }
-            }
-            .navigationTitle("Local captures")
-            .scrollContentBackground(.hidden)
-            .background(Design.Colors.background)
-            .searchable(text: $query.text, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search titles and text")
-            .onChange(of: query.text) { _, _ in audio.stopPlayback() }
-            .onChange(of: query.kind) { _, _ in audio.stopPlayback() }
-            .onChange(of: query.scope) { _, _ in audio.stopPlayback() }
-            .onChange(of: editor?.id) { _, id in if id != nil { audio.stopPlayback() }; syncActivity() }
-            .onChange(of: checklist?.id) { _, id in if id != nil { audio.stopPlayback() }; syncActivity() }
-            .onChange(of: deleting?.id) { _, _ in syncActivity() }
-            .onChange(of: picker?.id) { _, id in if id != nil { audio.stopPlayback() }; syncActivity() }
-            .onChange(of: pendingImages.count) { _, _ in syncActivity() }
-            .onChange(of: mediaBusy) { _, _ in syncActivity() }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active { syncActivity() }
-                else if phase == .background { deactivate() }
-            }
-            .onAppear { syncActivity() }
-            .onDisappear {
-                // Full-screen system capture covers its presenter. Keep that picker's
-                // identity alive until its explicit completion or real backgrounding.
-                if picker == nil { deactivate() }
-                else { audio.stop() }
-            }
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done", action: close)
-                        .foregroundStyle(Design.Brand.accent)
-                        .disabled(activity.blocksDismiss)
-                }
-            }
-            .sheet(item: $checklist) { capture in
-                LocalCaptureChecklist(captureID: capture.id, store: store)
-            }
-            .safeAreaInset(edge: .bottom) {
-                if audio.isRecording {
-                    Button { audio.stop(); syncActivity() } label: {
-                        Label("Recording · Stop microphone", systemImage: "stop.circle.fill")
-                            .frame(maxWidth: .infinity).padding()
-                    }
-                    .tint(.red).background(.regularMaterial)
-                    .accessibilityLabel("Microphone recording. Stop recording")
-                }
-                if audio.transcribingID != nil {
-                    VStack {
-                        ProgressView("Transcribing on device")
-                        Button("Cancel transcription") { audio.cancelTranscription(); syncActivity() }
-                    }
-                    .frame(maxWidth: .infinity).padding().background(.regularMaterial)
-                }
-            }
-            .sheet(item: $editor) { capture in
-                LocalCaptureEditor(capture: capture, store: store)
-            }
-            .sheet(item: $picker) { choice in
-                let token = lifecycleID
-                LocalImagePicker(source: choice.source) { images, failure in
-                    guard lifecycleID == token else { return }
-                    picker = nil
-                    if let failure { errorMessage = failure }
-                    if let images, !images.isEmpty {
-                        pendingImages = images
-                        pendingKind = choice.source == .document ? .document : .photo
-                        saveImages()
-                    }
-                    syncActivity()
-                }.ignoresSafeArea()
-            }
-            .confirmationDialog("Delete this capture and all its attachments permanently?", isPresented: Binding(
-                get: { deleting != nil }, set: { if !$0 { deleting = nil } }
-            ), titleVisibility: .visible) {
-                Button("Delete permanently", role: .destructive) {
-                    guard let capture = deleting else { return }
-                    audio.stop()
-                    do { try store.delete(capture) }
-                    catch { errorMessage = "Delete incomplete; retry. \(error.localizedDescription)" }
-                    deleting = nil
-                }
-            }
-            .confirmationDialog("Discard the unsaved imported images?", isPresented: $discardingPendingImages,
-                                titleVisibility: .visible) {
-                Button("Discard images", role: .destructive) { pendingImages = [] }
-                Button("Keep images", role: .cancel) {}
-            }
-            .alert("Local capture", isPresented: Binding(
-                get: { errorMessage != nil || audio.notice != nil },
-                set: { if !$0 { errorMessage = nil; audio.notice = nil } }
-            )) {
-                Button("OK") { errorMessage = nil; audio.notice = nil }
-            } message: { Text(errorMessage ?? audio.notice ?? "") }
+            presentedLibrary
         }
+    }
+
+    private var privacySection: some View {
+        Section {
+            Label("On this device only", systemImage: "iphone.gen3")
+            Text("No Hermes connection, pairing, or automatic uploads. App-private captures are excluded from backup; deleting the app removes them. Explicit Files exports use your chosen destination.")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+
+    private var supportingToolsSection: some View {
+        Section {
+            Button("Open local inbox", systemImage: "tray", action: openInbox)
+                .disabled(controlsDisabled)
+            Text("Share one plain-text item or HTTP/HTTPS link from another app, preview, then Save. Shortcuts: Save text to local inbox (confirmation required) or Open local inbox. No link fetching or agent connection.")
+                .font(.footnote).foregroundStyle(.secondary)
+            NavigationLink("Storage & backup") {
+                LocalCaptureStorageView(store: store, activity: activity).onAppear { audio.stopPlayback() }
+            }
+                .disabled(controlsDisabled)
+                .accessibilityIdentifier("capture.storage")
+        }
+    }
+
+    private var captureSection: some View {
+        Section("Capture") {
+            Button("New text note", systemImage: "square.and.pencil") {
+                do { editor = try store.create(kind: .note, title: "New note"); syncActivity() }
+                catch { errorMessage = error.localizedDescription }
+            }.disabled(controlsDisabled)
+            Button("Take photo", systemImage: "camera") { prepareCamera(document: false) }
+                .disabled(controlsDisabled)
+            Button("Import photo", systemImage: "photo") {
+                guard pendingImages.isEmpty else { errorMessage = "Save the pending import first."; return }
+                picker = PickerChoice(source: .library)
+                syncActivity()
+            }.disabled(controlsDisabled)
+            Text("The system photo picker may download an iCloud original you select. OCR and storage stay on this device.")
+                .font(.caption).foregroundStyle(.secondary)
+            Button("Scan document", systemImage: "doc.viewfinder") { prepareCamera(document: true) }
+                .disabled(controlsDisabled)
+            if audio.isRecording {
+                Label("Microphone recording", systemImage: "mic.fill")
+                    .foregroundStyle(.red).accessibilityLabel("Microphone is recording")
+                Button("Stop recording", systemImage: "stop.circle.fill") { audio.stop(); syncActivity() }
+                    .tint(.red).accessibilityIdentifier("capture.stopRecording")
+            } else {
+                Button(audio.isStarting ? "Requesting microphone…" : "Record voice", systemImage: "mic") {
+                    activity.isMediaBusy = true
+                    Task { await audio.start(store: store); syncActivity() }
+                }.disabled(controlsDisabled)
+            }
+        }
+    }
+
+    @ViewBuilder private var pendingImportSection: some View {
+        if !pendingImages.isEmpty {
+            Section("Unsaved import") {
+                Text("Saving failed. These images remain in memory while this screen is open.")
+                Button("Retry saving import") { saveImages() }
+                Button("Discard pending import", role: .destructive) { discardingPendingImages = true }
+            }
+        }
+    }
+
+    private var filterSection: some View {
+        Section("Library filters") {
+            Picker("Show", selection: $query.scope) {
+                ForEach(LocalCaptureLibraryScope.allCases, id: \.self) { scope in
+                    Text(scope.rawValue).tag(scope)
+                }
+            }.pickerStyle(.menu).accessibilityIdentifier("capture.scope")
+            Picker("Kind", selection: $query.kind) {
+                Text("All kinds").tag(Optional<LocalCapture.Kind>.none)
+                ForEach(LocalCapture.Kind.allCases, id: \.self) { kind in
+                    Text(kind.rawValue.capitalized).tag(Optional(kind))
+                }
+            }.pickerStyle(.menu).accessibilityIdentifier("capture.kind")
+            if !query.text.isEmpty || query.kind != nil || query.scope != .active {
+                Button("Reset library filters") { query = LocalCaptureLibraryQuery() }
+            }
+        }
+    }
+
+    private func captureActions(_ capture: LocalCapture) -> some View {
+        Menu {
+            Button(capture.isPinned ? "Unpin capture" : "Pin capture", systemImage: capture.isPinned ? "pin.slash" : "pin") {
+                do { try store.setPinned(!capture.isPinned, captureID: capture.id) }
+                catch { errorMessage = error.localizedDescription }
+            }
+            Button(capture.isArchived ? "Unarchive capture" : "Archive capture", systemImage: "archivebox") {
+                do {
+                    try store.setArchived(!capture.isArchived, captureID: capture.id)
+                    if audio.playingID == capture.id { audio.stopPlayback() }
+                } catch { errorMessage = error.localizedDescription }
+            }
+            Button("Delete capture", role: .destructive) { deleting = capture; syncActivity() }
+        } label: {
+            Label("Capture actions", systemImage: "ellipsis.circle")
+        }
+        .accessibilityLabel("Actions for \(capture.title)")
+        .accessibilityIdentifier("capture.actions")
+        .disabled(controlsDisabled)
+    }
+
+    private func voiceControls(_ capture: LocalCapture) -> some View {
+        HStack {
+            Button(audio.playingID == capture.id ? "Stop playback" : "Play recording") {
+                if audio.playingID == capture.id { audio.stopPlayback() }
+                else { audio.play(capture, store: store) }
+                syncActivity()
+            }
+            Button("Transcribe offline") {
+                activity.isMediaBusy = true
+                Task { await audio.transcribe(capture, store: store); syncActivity() }
+            }
+                .disabled(controlsDisabled)
+        }.disabled(controlsDisabled && audio.playingID != capture.id)
+    }
+
+    private func captureRow(_ capture: LocalCapture) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { editor = capture; syncActivity() } label: {
+                VStack(alignment: .leading) {
+                    Text(capture.title.isEmpty ? "Untitled capture" : capture.title).font(.headline)
+                    Text(capture.kind.rawValue.capitalized + " · " + capture.createdAt.formatted()).font(.caption)
+                    if !capture.text.isEmpty { Text(capture.text).lineLimit(2) }
+                }
+            }.accessibilityLabel("Review \(capture.title)")
+                .disabled(controlsDisabled)
+            if capture.kind == .voice {
+                voiceControls(capture)
+            } else if !capture.attachments.isEmpty {
+                Button("Recognize text on device") { recognize(capture) }.disabled(controlsDisabled)
+            }
+            if capture.isPinned { Label("Pinned", systemImage: "pin.fill").font(.caption) }
+            Button {
+                checklist = capture
+                syncActivity()
+            } label: {
+                Label("Checklist · \(capture.tasks.filter { $0.isCompleted }.count)/\(capture.tasks.count)", systemImage: "checklist")
+            }
+            .accessibilityLabel("Checklist for \(capture.title)")
+            .accessibilityIdentifier("capture.checklist")
+            .disabled(controlsDisabled)
+            captureActions(capture)
+        }.buttonStyle(.borderless)
+    }
+
+    private var savedCapturesSection: some View {
+        Section(query.scope == .archived ? "Archived captures" : "Saved captures") {
+            if visibleCaptures.isEmpty {
+                Text(store.captures.isEmpty ? "Your notes, photos, scans, and recordings will appear here." : "No captures match these filters. Archived captures are shown only in Archived.")
+            }
+            ForEach(visibleCaptures) { capture in
+                captureRow(capture)
+            }
+        }
+    }
+
+    private var libraryList: some View {
+        List {
+            privacySection
+            supportingToolsSection
+            captureSection
+            pendingImportSection
+            filterSection
+            savedCapturesSection
+            if recognizing { ProgressView("Recognizing text on device") }
+        }
+    }
+
+    private var searchableLibrary: some View {
+        libraryList
+        .navigationTitle("Local captures")
+        .scrollContentBackground(.hidden)
+        .background(Design.Colors.background)
+        .searchable(text: $query.text, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search titles and text")
+        .onChange(of: query.text) { _, _ in audio.stopPlayback() }
+        .onChange(of: query.kind) { _, _ in audio.stopPlayback() }
+        .onChange(of: query.scope) { _, _ in audio.stopPlayback() }
+    }
+
+    private var observedLibrary: some View {
+        searchableLibrary
+        .onChange(of: editor?.id) { _, id in if id != nil { audio.stopPlayback() }; syncActivity() }
+        .onChange(of: checklist?.id) { _, id in if id != nil { audio.stopPlayback() }; syncActivity() }
+        .onChange(of: deleting?.id) { _, _ in syncActivity() }
+        .onChange(of: picker?.id) { _, id in if id != nil { audio.stopPlayback() }; syncActivity() }
+        .onChange(of: pendingImages.count) { _, _ in syncActivity() }
+        .onChange(of: mediaBusy) { _, _ in syncActivity() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { syncActivity() }
+            else if phase == .background { deactivate() }
+        }
+        .onAppear { syncActivity() }
+        .onDisappear {
+            // Full-screen system capture covers its presenter. Keep that picker's
+            // identity alive until its explicit completion or real backgrounding.
+            if picker == nil { deactivate() }
+            else { audio.stop() }
+        }
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done", action: close)
+                    .foregroundStyle(Design.Brand.accent)
+                    .disabled(activity.blocksDismiss)
+            }
+        }
+        .sheet(item: $checklist) { capture in
+            LocalCaptureChecklist(captureID: capture.id, store: store)
+        }
+        .safeAreaInset(edge: .bottom) {
+            if audio.isRecording {
+                Button { audio.stop(); syncActivity() } label: {
+                    Label("Recording · Stop microphone", systemImage: "stop.circle.fill")
+                        .frame(maxWidth: .infinity).padding()
+                }
+                .tint(.red).background(.regularMaterial)
+                .accessibilityLabel("Microphone recording. Stop recording")
+            }
+            if audio.transcribingID != nil {
+                VStack {
+                    ProgressView("Transcribing on device")
+                    Button("Cancel transcription") { audio.cancelTranscription(); syncActivity() }
+                }
+                .frame(maxWidth: .infinity).padding().background(.regularMaterial)
+            }
+        }
+    }
+
+    private var presentedLibrary: some View {
+        observedLibrary
+        .sheet(item: $editor) { capture in
+            LocalCaptureEditor(capture: capture, store: store)
+        }
+        .sheet(item: $picker) { choice in
+            let token = lifecycleID
+            LocalImagePicker(source: choice.source) { images, failure in
+                guard lifecycleID == token else { return }
+                picker = nil
+                if let failure { errorMessage = failure }
+                if let images, !images.isEmpty {
+                    pendingImages = images
+                    pendingKind = choice.source == .document ? .document : .photo
+                    saveImages()
+                }
+                syncActivity()
+            }.ignoresSafeArea()
+        }
+        .confirmationDialog("Delete this capture and all its attachments permanently?", isPresented: deletionPresented, titleVisibility: .visible) {
+            Button("Delete permanently", role: .destructive) {
+                guard let capture = deleting else { return }
+                audio.stop()
+                do { try store.delete(capture) }
+                catch { errorMessage = "Delete incomplete; retry. \(error.localizedDescription)" }
+                deleting = nil
+            }
+        }
+        .confirmationDialog("Discard the unsaved imported images?", isPresented: $discardingPendingImages,
+                            titleVisibility: .visible) {
+            Button("Discard images", role: .destructive) { pendingImages = [] }
+            Button("Keep images", role: .cancel) {}
+        }
+        .alert("Local capture", isPresented: noticePresented) {
+            Button("OK") { errorMessage = nil; audio.notice = nil }
+        } message: { Text(errorMessage ?? audio.notice ?? "") }
+    }
+
+    private var deletionPresented: Binding<Bool> {
+        Binding<Bool>(
+            get: { deleting != nil },
+            set: { isPresented in if !isPresented { deleting = nil } }
+        )
+    }
+
+    private var noticePresented: Binding<Bool> {
+        Binding<Bool>(
+            get: { errorMessage != nil || audio.notice != nil },
+            set: { isPresented in if !isPresented { errorMessage = nil; audio.notice = nil } }
+        )
     }
 
     private func prepareCamera(document: Bool) {
@@ -544,12 +607,7 @@ private struct LocalCaptureChecklist: View {
                         if capture.tasks.isEmpty { Text("No checklist items. Add one above.") }
                         ForEach(capture.tasks) { task in
                             VStack(alignment: .leading) {
-                                Toggle(task.title, isOn: Binding(
-                                    get: { self.capture?.tasks.first(where: { $0.id == task.id })?.isCompleted ?? false },
-                                    set: { completed in
-                                        perform { try store.setTaskCompleted(completed, taskID: task.id, captureID: captureID) }
-                                    }
-                                ))
+                                Toggle(task.title, isOn: completionBinding(for: task))
                                 .accessibilityHint("Marks this item complete locally only")
                                 Button("Remove item", role: .destructive) { removing = task }
                                     .accessibilityLabel("Remove \(task.title)")
@@ -563,9 +621,7 @@ private struct LocalCaptureChecklist: View {
             }
             .navigationTitle("Local checklist")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .confirmationDialog("Remove this checklist item?", isPresented: Binding(
-                get: { removing != nil }, set: { if !$0 { removing = nil } }
-            ), titleVisibility: .visible) {
+            .confirmationDialog("Remove this checklist item?", isPresented: removalPresented, titleVisibility: .visible) {
                 Button("Remove item", role: .destructive) {
                     guard let task = removing else { return }
                     perform { try store.removeTask(task.id, captureID: captureID) }
@@ -573,6 +629,22 @@ private struct LocalCaptureChecklist: View {
                 }
             }
         }
+    }
+
+    private var removalPresented: Binding<Bool> {
+        Binding<Bool>(
+            get: { removing != nil },
+            set: { isPresented in if !isPresented { removing = nil } }
+        )
+    }
+
+    private func completionBinding(for task: LocalCaptureTask) -> Binding<Bool> {
+        Binding<Bool>(
+            get: { self.capture?.tasks.first(where: { $0.id == task.id })?.isCompleted ?? false },
+            set: { completed in
+                perform { try store.setTaskCompleted(completed, taskID: task.id, captureID: captureID) }
+            }
+        )
     }
 
     private func perform(_ operation: () throws -> Void) {
