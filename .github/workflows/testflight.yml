@@ -80,26 +80,7 @@ jobs:
           BUNDLE_RESOURCE_ID="$(printf '%s' "$ASC_API_BODY" | jq -er '.data[] | select(.attributes.identifier == "cool.n0thing.hermes.Share") | .id')"
           asc_api_get "/v1/bundleIds/$BUNDLE_RESOURCE_ID/bundleIdCapabilities"
           CAPABILITY_ID="$(printf '%s' "$ASC_API_BODY" | jq -r '.data[] | select(.attributes.capabilityType == "APP_GROUPS") | .id' | head -n1)"
-          if test -z "$CAPABILITY_ID"; then
-            BODY="$(jq -n --arg id "$BUNDLE_RESOURCE_ID" '{data:{type:"bundleIdCapabilities",attributes:{capabilityType:"APP_GROUPS"},relationships:{bundleId:{data:{type:"bundleIds",id:$id}}}}}')"
-            asc_api_post '/v1/bundleIdCapabilities' "$BODY"
-          fi
-
-          asc_api_get '/v1/appGroups?filter[identifier]=group.cool.n0thing.hermes&limit=2'
-          APP_GROUP_RESOURCE_ID="$(printf '%s' "$ASC_API_BODY" | jq -er '.data[] | select(.attributes.identifier == "group.cool.n0thing.hermes") | .id')"
-          BODY="$(jq -n --arg bundle "$BUNDLE_RESOURCE_ID" --arg group "$APP_GROUP_RESOURCE_ID" '{data:{type:"bundleIdAppGroups",relationships:{bundleId:{data:{type:"bundleIds",id:$bundle}},appGroup:{data:{type:"appGroups",id:$group}}}}}')"
-          asc_make_jwt
-          RESPONSE="$RUNNER_TEMP/app-group-link-response.json"
-          HTTP_CODE="$(curl --fail-with-body --silent --show-error -X POST \
-            'https://api.appstoreconnect.apple.com/v1/bundleIdAppGroups' \
-            -H "Authorization: Bearer $ASC_TOKEN" \
-            -H 'Content-Type: application/json' \
-            -d "$BODY" -o "$RESPONSE" -w '%{http_code}' || true)"
-          if test "$HTTP_CODE" != 201 && test "$HTTP_CODE" != 409; then
-            printf 'App Group link failed (HTTP %s):\n' "$HTTP_CODE" >&2
-            jq '{errors: [.errors[]? | {status, code, title, detail, source}]}' "$RESPONSE" >&2 || true
-            exit 1
-          fi
+          test -n "$CAPABILITY_ID" || { echo 'App Groups is not enabled for cool.n0thing.hermes.Share.' >&2; exit 1; }
 
       - name: Create or reuse Share App Store profile
         shell: bash
