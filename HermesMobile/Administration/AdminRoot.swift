@@ -14,6 +14,7 @@ struct AdminRoot: View {
     @State private var authSession: AdminAuthSession?
     @State private var overview: AdminOverview?
     @State private var signingIn = false
+    @State private var refreshingOverview = false
     @State private var connectionMessage: String?
 
     var body: some View {
@@ -87,14 +88,31 @@ struct AdminRoot: View {
                     }
                 }
                 Section("Manage Hermes") {
-                    Label("Overview & health", systemImage: "gauge.with.dots.needle.50percent")
-                    Label("Configuration & models", systemImage: "slider.horizontal.3")
-                    Label("Profiles & sessions", systemImage: "person.2")
-                    Label("Skills, tools & MCP", systemImage: "wrench.and.screwdriver")
-                    Label("Memory & instructions", systemImage: "brain.head.profile")
-                    Label("Automation & connections", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                    Label("System & operations", systemImage: "server.rack")
-                    Text("Management areas unlock only after the selected dashboard verifies sign-in and profile context. No local-only feature grants host authority.")
+                    if let overview {
+                        NavigationLink {
+                            AdminOverviewView(
+                                overview: overview,
+                                refreshing: refreshingOverview,
+                                refreshMessage: connectionMessage,
+                                onRefresh: { await refreshOverview() }
+                            )
+                        } label: {
+                            Label("Overview & health", systemImage: "gauge.with.dots.needle.50percent")
+                        }
+                        .accessibilityIdentifier("admin.overview")
+                    } else {
+                        Label("Overview & health", systemImage: "lock")
+                            .foregroundStyle(.secondary)
+                    }
+                    plannedArea("Configuration & models", systemImage: "slider.horizontal.3")
+                    plannedArea("Profiles & sessions", systemImage: "person.2")
+                    plannedArea("Skills, tools & MCP", systemImage: "wrench.and.screwdriver")
+                    plannedArea("Memory & instructions", systemImage: "brain.head.profile")
+                    plannedArea("Automation & connections", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                    plannedArea("System & operations", systemImage: "server.rack")
+                    Text(overview == nil
+                         ? "Overview unlocks after this dashboard verifies sign-in and profile context."
+                         : "Overview is available now. Remaining management areas are clearly marked as planned rather than presented as working controls.")
                         .font(Design.Typography.footnote)
                 }
             }
@@ -107,6 +125,18 @@ struct AdminRoot: View {
             .onChange(of: profile) { _, _ in resetSelection() }
         }
         .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private func plannedArea(_ title: String, systemImage: String) -> some View {
+        LabeledContent {
+            Text("Planned")
+                .font(Design.Typography.footnote)
+                .foregroundStyle(.secondary)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .foregroundStyle(.secondary)
+        }
     }
 
     @MainActor
@@ -167,12 +197,131 @@ struct AdminRoot: View {
         }
     }
 
+    @MainActor
+    private func refreshOverview() async {
+        guard let reviewedTarget = target,
+              let session = authSession,
+              overview != nil,
+              !refreshingOverview
+        else { return }
+        refreshingOverview = true
+        connectionMessage = nil
+        defer { refreshingOverview = false }
+
+        do {
+            let transport = URLSessionAdminTransport(
+                target: reviewedTarget,
+                accessTokenProvider: { session.accessToken }
+            )
+            let refreshed = try await HermesAdminClient(transport: transport)
+                .readOverview(target: reviewedTarget)
+            guard target == reviewedTarget, authSession === session else { return }
+            try await session.validate(identity: refreshed.identity)
+            overview = refreshed
+        } catch {
+            guard target == reviewedTarget, authSession === session else { return }
+            let hasAuthority = session.accessToken != nil && session.authenticatedTarget == reviewedTarget
+            if AdminOverviewRefreshPolicy.invalidatesSession(error, sessionHasAuthority: hasAuthority) {
+                session.cancel()
+                authSession = nil
+                overview = nil
+                connectionMessage = "Dashboard authority could not be verified. Sign in again before continuing."
+            } else {
+                connectionMessage = "Status refresh failed. Existing verified values remain visible."
+            }
+        }
+    }
+
     private func resetSelection() {
         authSession?.cancel()
         target = nil
         overview = nil
         authSession = nil
         connectionMessage = nil
+    }
+}
+
+enum AdminOverviewRefreshPolicy {
+    static func invalidatesSession(_ error: Error, sessionHasAuthority: Bool) -> Bool {
+        guard sessionHasAuthority else { return true }
+        guard let adminError = error as? AdminError else { return false }
+        switch adminError {
+        case .wrongTarget, .http(401), .http(403):
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+struct AdminOverviewView: View {
+    let overview: AdminOverview
+    let refreshing: Bool
+    let refreshMessage: String?
+    let onRefresh: @MainActor () async -> Void
+
+    var body: some View {
+        Form {
+            Section("Reviewed target") {
+                LabeledContent("Dashboard", value: overview.target.baseURL.absoluteString)
+                LabeledContent("Selected profile", value: overview.target.profile)
+                LabeledContent("Serving profile", value: overview.profiles.current)
+                LabeledContent("Sticky active profile", value: overview.profiles.active)
+            }
+
+            Section("Host health") {
+                LabeledContent("Overall", value: overview.status.overall.capitalized)
+                LabeledContent("Gateway", value: overview.status.gatewayRunning ? "Running" : "Stopped")
+                if let state = overview.status.gatewayState, !state.isEmpty {
+                    LabeledContent("Gateway state", value: state)
+                }
+                LabeledContent("Hermes version", value: overview.status.version)
+                LabeledContent("Active agents", value: String(overview.status.activeAgents))
+                LabeledContent("Active sessions", value: String(overview.status.activeSessions))
+            }
+
+            Section("Authenticated identity") {
+                LabeledContent("Name", value: overview.identity.displayName)
+                LabeledContent("Email", value: overview.identity.email.isEmpty ? "Not provided" : overview.identity.email)
+                LabeledContent("Provider", value: overview.identity.provider)
+            }
+
+            Section("Profile inventory") {
+                LabeledContent("Available profiles", value: String(overview.status.availableProfiles.count))
+                ForEach(overview.status.availableProfiles, id: \.self) { profile in
+                    HStack {
+                        Text(profile)
+                        Spacer()
+                        if profile == overview.target.profile {
+                            Text("Selected")
+                                .font(Design.Typography.footnote)
+                                .foregroundStyle(Design.Brand.accent)
+                        }
+                    }
+                }
+            }
+
+            Section {
+                if refreshing {
+                    ProgressView("Refreshing status…")
+                } else {
+                    Button("Refresh status", systemImage: "arrow.clockwise") {
+                        Task { await onRefresh() }
+                    }
+                    .accessibilityIdentifier("admin.overview.refresh")
+                }
+                if let refreshMessage {
+                    Text(refreshMessage)
+                        .font(Design.Typography.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Design.Colors.background)
+        .foregroundStyle(Design.Colors.foreground)
+        .tint(Design.Brand.accent)
+        .navigationTitle("Overview")
     }
 }
 

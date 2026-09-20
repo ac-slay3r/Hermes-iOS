@@ -16,6 +16,7 @@ Local capture, OCR, recording, local intelligence, intake, sensors, timeline, co
 | Dashboard target review | Reachable | Validates an exact HTTPS base URL and lowercase profile identifier. Review is not authentication. |
 | Dashboard management map | Reachable | Shows Overview, Configuration, Profiles/Sessions, Skills/Tools/MCP, Memory/Instructions, Automation/Connections, and System/Operations as the product hierarchy. No controls are falsely unlocked. |
 | Status/identity/profile client boundary | Reachable after target review and sign-in | Requests selected-profile `/api/status`, requires the host's `native_ios_pkce` capability, then verifies `/api/auth/me` before `/api/profiles/active`. |
+| Authenticated overview | Reachable after verified sign-in | `Overview & health` opens a read-only native screen for exact target/profile context, host health, version, gateway, activity counts, identity, profile inventory, and guarded live refresh. Unimplemented areas are marked `Planned`. |
 | Session-title and SOUL correction engines | Implemented with authored XCTest fixtures, unreachable | Review/apply/readback behavior remains locked until approved authentication and transport exist; XCTest has not run on this Linux host. |
 | Production dashboard networking | Implemented; compatible host required | Uses an ephemeral, no-cookie/no-cache, redirect-rejecting transport bound to the reviewed HTTPS origin/base path. Access tokens stay in memory; rotating refresh credentials use this-device-only Keychain storage. No copied token or relay credential reuse. |
 | Local-only experiments | Source preserved, unreachable from `AdminRoot` | Share/Shortcuts targets may still exist structurally; normal launch does not route into local workspace or composer lab. |
@@ -31,7 +32,7 @@ The source now defines an immutable `AdminOverview` bound to the reviewed target
 
 Request order is intentional: public target-specific status → authenticated identity → protected profile context. A `401` stops before profile discovery. Existing base paths and the exact selected profile query are preserved.
 
-Normal launch can now check an exact host/profile, restore a rotating native credential or open system-browser sign-in, and render verified identity/profile context. Management mutations remain locked.
+Normal launch can now check an exact host/profile, restore a rotating native credential or open system-browser sign-in, render verified identity/profile context, and navigate into a read-only native overview with live refresh. Management mutations remain locked.
 
 ## Authentication deployment and device gate
 
@@ -55,9 +56,9 @@ The general dashboard configuration response is not a proven secret-safe project
 - Swift XCTest/UI test source: added for dashboard hierarchy, request ordering/decoding, exact target binding, and `401` fail-closed behavior.
 - Previous product-correction SHA `36fcbc31c44dfc051bd9c5065e9cc2e4144a3124`: native build and tests passed in GitHub Actions.
 - Current authentication SHA `9e1b09b7b8dc431f66b5f64d60da02b3bebd2f62`: simulator build, native XCTest/UI tests, relay tests, and connector tests passed in exact-SHA GitHub Actions run `35521639784`.
-- Live host authentication/read: pending compatible gateway deployment and physical-device verification.
+- Live host authentication: verified by the owner from TestFlight build 17 against `https://dashboard.n0thing.cool`; the replacement build with navigable overview remains pending native CI and TestFlight delivery.
 - Native write/readback: not run and not authorized by this scope decision.
-- TestFlight/release: not attempted; exact-SHA native and signing gates remain required.
+- TestFlight/release: authentication build 17 is valid and ready for internal testing; any overview replacement requires its own exact-SHA native and signed release gates.
 
 ## Signing and retained targets
 

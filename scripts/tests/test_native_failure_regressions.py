@@ -51,6 +51,26 @@ class NativeFailureRegressions(unittest.TestCase):
         self.assertIn('isHittable', source)
         self.assertIn('app.debugDescription', source)
 
+    def test_authenticated_overview_is_navigable_and_refreshable(self):
+        source = (ROOT / 'HermesMobile/Administration/AdminRoot.swift').read_text()
+        for token in (
+            'NavigationLink {',
+            'AdminOverviewView(',
+            '.accessibilityIdentifier("admin.overview")',
+            'Button("Refresh status", systemImage: "arrow.clockwise")',
+            'LabeledContent("Hermes version"',
+            'LabeledContent("Active sessions"',
+            'LabeledContent("Available profiles"',
+        ):
+            self.assertIn(token, source)
+        self.assertIn('await refreshOverview()', source)
+        self.assertGreaterEqual(source.count('authSession === session'), 2)
+        self.assertIn('try await session.validate(identity: refreshed.identity)', source)
+        self.assertIn('AdminOverviewRefreshPolicy.invalidatesSession', source)
+        self.assertIn('session.cancel()', source)
+        self.assertIn('Dashboard authority could not be verified.', source)
+        self.assertIn('Existing verified values remain visible.', source)
+
     def test_admin_authentication_asserts_explicit_accessibility_value(self):
         source = (ROOT / 'HermesMobile/Administration/AdminRoot.swift').read_text()
         self.assertIn('.accessibilityIdentifier("admin.identity")', source)

@@ -329,6 +329,33 @@ final class AdminClientTests: XCTestCase {
         XCTAssertEqual(transport.requests[0].url?.query, "profile=work")
     }
 
+    func testOverviewRefreshPolicyInvalidatesLostAuthorityAndAuthenticationFailures() throws {
+        XCTAssertTrue(AdminOverviewRefreshPolicy.invalidatesSession(
+            AdminError.wrongTarget,
+            sessionHasAuthority: true
+        ))
+        XCTAssertTrue(AdminOverviewRefreshPolicy.invalidatesSession(
+            AdminError.http(401),
+            sessionHasAuthority: true
+        ))
+        XCTAssertTrue(AdminOverviewRefreshPolicy.invalidatesSession(
+            AdminError.http(403),
+            sessionHasAuthority: true
+        ))
+        XCTAssertTrue(AdminOverviewRefreshPolicy.invalidatesSession(
+            URLError(.cancelled),
+            sessionHasAuthority: false
+        ))
+        XCTAssertFalse(AdminOverviewRefreshPolicy.invalidatesSession(
+            URLError(.notConnectedToInternet),
+            sessionHasAuthority: true
+        ))
+        XCTAssertFalse(AdminOverviewRefreshPolicy.invalidatesSession(
+            AdminError.http(500),
+            sessionHasAuthority: true
+        ))
+    }
+
     func testOverviewBindsStatusIdentityAndProfilesToReviewedTarget() async throws {
         let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
         let transport = AdminFixtureTransport(responses: [

@@ -19,6 +19,12 @@ final class AdminLaunchUITests: XCTestCase {
         }
         XCTAssertFalse(app.buttons["admin.localWorkspace"].exists)
         XCTAssertFalse(app.buttons["admin.composerLab"].exists)
+        for planned in [
+            "Configuration & models", "Profiles & sessions", "Skills, tools & MCP",
+            "Memory & instructions", "Automation & connections", "System & operations"
+        ] {
+            XCTAssertFalse(app.buttons[planned].exists, "Planned area must not appear actionable: \(planned)")
+        }
     }
 
     @MainActor
