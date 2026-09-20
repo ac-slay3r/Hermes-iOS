@@ -14,8 +14,10 @@ env:
   TEAM_ID: VYJS7JMXU5
   MAIN_BUNDLE_ID: cool.n0thing.hermes
   WIDGET_BUNDLE_ID: cool.n0thing.hermes.Widgets
+  SHARE_BUNDLE_ID: cool.n0thing.hermes.Share
   MAIN_PROFILE_NAME: cool.n0thing.hermesZ
   WIDGET_PROFILE_NAME: cool.n0thing.hermes
+  SHARE_PROFILE_NAME: cool.n0thing.hermes.Share
 
 jobs:
   release-gate:
@@ -62,9 +64,10 @@ jobs:
           IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
           IOS_MAIN_PROFILE_BASE64: ${{ secrets.IOS_MAIN_PROFILE_BASE64 }}
           IOS_WIDGET_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_PROFILE_BASE64 }}
+          IOS_SHARE_PROFILE_BASE64: ${{ secrets.IOS_SHARE_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
-          for name in APPSTORE_KEY_ID APPSTORE_ISSUER_ID APPSTORE_PRIVATE_KEY IOS_DISTRIBUTION_P12_BASE64 IOS_DISTRIBUTION_P12_PASSWORD IOS_KEYCHAIN_PASSWORD IOS_MAIN_PROFILE_BASE64 IOS_WIDGET_PROFILE_BASE64; do
+          for name in APPSTORE_KEY_ID APPSTORE_ISSUER_ID APPSTORE_PRIVATE_KEY IOS_DISTRIBUTION_P12_BASE64 IOS_DISTRIBUTION_P12_PASSWORD IOS_KEYCHAIN_PASSWORD IOS_MAIN_PROFILE_BASE64 IOS_WIDGET_PROFILE_BASE64 IOS_SHARE_PROFILE_BASE64; do
             test -n "${!name:-}" || { echo "Missing required credential: $name" >&2; exit 1; }
           done
 
@@ -79,6 +82,7 @@ jobs:
           IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
           IOS_MAIN_PROFILE_BASE64: ${{ secrets.IOS_MAIN_PROFILE_BASE64 }}
           IOS_WIDGET_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_PROFILE_BASE64 }}
+          IOS_SHARE_PROFILE_BASE64: ${{ secrets.IOS_SHARE_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
           KEYCHAIN="$RUNNER_TEMP/hermes-signing.keychain-db"
@@ -104,11 +108,21 @@ jobs:
           }
           install_profile "$IOS_MAIN_PROFILE_BASE64" "$RUNNER_TEMP/main.mobileprovision" "$RUNNER_TEMP/main-profile.plist"
           install_profile "$IOS_WIDGET_PROFILE_BASE64" "$RUNNER_TEMP/widget.mobileprovision" "$RUNNER_TEMP/widget-profile.plist"
+          install_profile "$IOS_SHARE_PROFILE_BASE64" "$RUNNER_TEMP/share.mobileprovision" "$RUNNER_TEMP/share-profile.plist"
 
           test "$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/main-profile.plist")" = "$MAIN_PROFILE_NAME"
           test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/main-profile.plist")" = "$TEAM_ID.$MAIN_BUNDLE_ID"
           test "$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/widget-profile.plist")" = "$WIDGET_PROFILE_NAME"
           test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/widget-profile.plist")" = "$TEAM_ID.$WIDGET_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/share-profile.plist")" = "$SHARE_PROFILE_NAME"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/share-profile.plist")" = "$TEAM_ID.$SHARE_BUNDLE_ID"
+          python3 - "$RUNNER_TEMP/share-profile.plist" <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], 'rb') as handle:
+              groups = plistlib.load(handle)['Entitlements'].get('com.apple.security.application-groups')
+          if groups != ['group.cool.n0thing.hermes']:
+              raise SystemExit(f'Unexpected Share profile App Groups: {groups!r}')
+          PY
           security find-identity -v -p codesigning "$KEYCHAIN"
 
       - name: Install App Store Connect API key
@@ -146,16 +160,32 @@ jobs:
           set -euo pipefail
           APP="$RUNNER_TEMP/HermesMobile.xcarchive/Products/Applications/HermesMobile.app"
           WIDGET="$APP/PlugIns/HermesMobileWidgets.appex"
+          SHARE="$APP/PlugIns/HermesShareExtension.appex"
           test -d "$APP"
           test -d "$WIDGET"
+          test -d "$SHARE"
           codesign --verify --deep --strict --verbose=2 "$APP"
           codesign --verify --strict --verbose=2 "$WIDGET"
+          codesign --verify --strict --verbose=2 "$SHARE"
           codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/main-entitlements.plist"
           codesign -d --entitlements :- "$WIDGET" > "$RUNNER_TEMP/widget-entitlements.plist"
+          codesign -d --entitlements :- "$SHARE" > "$RUNNER_TEMP/share-entitlements.plist"
+          MAIN_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")
+          test "$MAIN_VERSION" = "$GITHUB_RUN_NUMBER"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$WIDGET/Info.plist")" = "$MAIN_VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$SHARE/Info.plist")" = "$MAIN_VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$RUNNER_TEMP/main-entitlements.plist")" = "$TEAM_ID.$MAIN_BUNDLE_ID"
           test "$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$RUNNER_TEMP/widget-entitlements.plist")" = "$TEAM_ID.$WIDGET_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$RUNNER_TEMP/share-entitlements.plist")" = "$TEAM_ID.$SHARE_BUNDLE_ID"
           test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$RUNNER_TEMP/main-entitlements.plist")" = "group.cool.n0thing.hermes"
           test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$RUNNER_TEMP/widget-entitlements.plist")" = "group.cool.n0thing.hermes"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$RUNNER_TEMP/share-entitlements.plist")" = "group.cool.n0thing.hermes"
+          for pair in "$APP|$TEAM_ID.$MAIN_BUNDLE_ID|$MAIN_PROFILE_NAME" "$WIDGET|$TEAM_ID.$WIDGET_BUNDLE_ID|$WIDGET_PROFILE_NAME" "$SHARE|$TEAM_ID.$SHARE_BUNDLE_ID|$SHARE_PROFILE_NAME"; do
+            path=${pair%%|*}; rest=${pair#*|}; expected_id=${rest%%|*}; expected_name=${rest#*|}
+            security cms -D -i "$path/embedded.mobileprovision" > "$RUNNER_TEMP/archive-profile.plist"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/archive-profile.plist")" = "$expected_name"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/archive-profile.plist")" = "$expected_id"
+          done
 
       - name: Export IPA
         shell: bash
@@ -173,6 +203,7 @@ jobs:
             <dict>
               <key>$MAIN_BUNDLE_ID</key><string>$MAIN_PROFILE_NAME</string>
               <key>$WIDGET_BUNDLE_ID</key><string>$WIDGET_PROFILE_NAME</string>
+              <key>$SHARE_BUNDLE_ID</key><string>$SHARE_PROFILE_NAME</string>
             </dict>
             <key>signingStyle</key><string>manual</string>
             <key>stripSwiftSymbols</key><true/>
@@ -189,6 +220,35 @@ jobs:
           IPA_COUNT=$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' -type f | wc -l | tr -d ' ')
           test "$IPA_COUNT" = 1
 
+      - name: Verify exported IPA signatures, profiles, and bundle versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA=$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' -type f -print -quit)
+          OUT="$RUNNER_TEMP/exported-ipa"
+          mkdir -p "$OUT"
+          ditto -x -k "$IPA" "$OUT"
+          APP=$(find "$OUT/Payload" -maxdepth 1 -name '*.app' -type d -print -quit)
+          WIDGET="$APP/PlugIns/HermesMobileWidgets.appex"
+          SHARE="$APP/PlugIns/HermesShareExtension.appex"
+          test -d "$APP" && test -d "$WIDGET" && test -d "$SHARE"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --verify --strict --verbose=2 "$WIDGET"
+          codesign --verify --strict --verbose=2 "$SHARE"
+          MAIN_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")
+          test "$MAIN_VERSION" = "$GITHUB_RUN_NUMBER"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$WIDGET/Info.plist")" = "$MAIN_VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$SHARE/Info.plist")" = "$MAIN_VERSION"
+          for pair in "$APP|$TEAM_ID.$MAIN_BUNDLE_ID|$MAIN_PROFILE_NAME" "$WIDGET|$TEAM_ID.$WIDGET_BUNDLE_ID|$WIDGET_PROFILE_NAME" "$SHARE|$TEAM_ID.$SHARE_BUNDLE_ID|$SHARE_PROFILE_NAME"; do
+            path=${pair%%|*}; rest=${pair#*|}; expected_id=${rest%%|*}; expected_name=${rest#*|}
+            security cms -D -i "$path/embedded.mobileprovision" > "$RUNNER_TEMP/export-profile.plist"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/export-profile.plist")" = "$expected_name"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/export-profile.plist")" = "$expected_id"
+            codesign -d --entitlements :- "$path" > "$RUNNER_TEMP/export-entitlements.plist"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$RUNNER_TEMP/export-entitlements.plist")" = "$expected_id"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$RUNNER_TEMP/export-entitlements.plist")" = "group.cool.n0thing.hermes"
+          done
+
       - name: Validate and upload
         shell: bash
         run: |
@@ -196,6 +256,48 @@ jobs:
           IPA=$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' -type f -print -quit)
           xcrun altool --validate-app --type ios --file "$IPA" --apiKey "$APPSTORE_KEY_ID" --apiIssuer "$APPSTORE_ISSUER_ID"
           xcrun altool --upload-app --type ios --file "$IPA" --apiKey "$APPSTORE_KEY_ID" --apiIssuer "$APPSTORE_ISSUER_ID"
+
+      - name: Verify uploaded build appears in App Store Connect
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY_FILE="$HOME/.appstoreconnect/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
+          make_token() {
+            KEY_FILE="$KEY_FILE" KEY_ID="$APPSTORE_KEY_ID" ISSUER_ID="$APPSTORE_ISSUER_ID" python3 - <<'PY'
+          import base64, json, os, subprocess, time
+          def enc(data):
+              return base64.urlsafe_b64encode(data).rstrip(b'=').decode('ascii')
+          header = enc(json.dumps({'alg':'ES256','kid':os.environ['KEY_ID'],'typ':'JWT'}, separators=(',',':')).encode())
+          now = int(time.time())
+          payload = enc(json.dumps({'iss':os.environ['ISSUER_ID'],'iat':now,'exp':now+720,'aud':'appstoreconnect-v1'}, separators=(',',':')).encode())
+          signing = f'{header}.{payload}'
+          der = subprocess.check_output(['openssl','dgst','-sha256','-sign',os.environ['KEY_FILE']], input=signing.encode())
+          index = 2 + (der[1] & 0x7f if der[1] & 0x80 else 0)
+          rlen = der[index + 1]; r = der[index + 2:index + 2 + rlen]; index += 2 + rlen
+          slen = der[index + 1]; s = der[index + 2:index + 2 + slen]
+          raw = r.lstrip(b'\0').rjust(32,b'\0')[-32:] + s.lstrip(b'\0').rjust(32,b'\0')[-32:]
+          print(f'{signing}.{enc(raw)}')
+          PY
+          }
+          ASC_JWT=$(make_token)
+          APP_ID=$(curl --fail --silent --show-error --globoff \
+            -H "Authorization: Bearer ${ASC_JWT}" \
+            'https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=cool.n0thing.hermes&limit=1' \
+            | python3 -c 'import json,sys; data=json.load(sys.stdin)["data"]; assert len(data)==1; print(data[0]["id"])')
+          for _ in $(seq 1 30); do
+            ASC_JWT=$(make_token)
+            FOUND=$(curl --fail --silent --show-error --globoff \
+              -H "Authorization: Bearer ${ASC_JWT}" \
+              "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&filter[version]=$GITHUB_RUN_NUMBER&limit=1" \
+              | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["data"]))')
+            if test "$FOUND" = 1; then
+              echo "Build $GITHUB_RUN_NUMBER is visible in App Store Connect."
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "Uploaded build $GITHUB_RUN_NUMBER did not appear within 15 minutes." >&2
+          exit 1
 
       - name: Preserve export diagnostics
         if: always()
@@ -220,8 +322,13 @@ jobs:
             "$RUNNER_TEMP/distribution.p12" \
             "$RUNNER_TEMP/main.mobileprovision" \
             "$RUNNER_TEMP/widget.mobileprovision" \
+            "$RUNNER_TEMP/share.mobileprovision" \
             "$RUNNER_TEMP/main-profile.plist" \
-            "$RUNNER_TEMP/widget-profile.plist"
+            "$RUNNER_TEMP/widget-profile.plist" \
+            "$RUNNER_TEMP/share-profile.plist" \
+            "$RUNNER_TEMP/archive-profile.plist" \
+            "$RUNNER_TEMP/export-profile.plist" \
+            "$RUNNER_TEMP/export-entitlements.plist"
           if test -f "$RUNNER_TEMP/installed-profile-uuids"; then
             while IFS= read -r uuid; do
               rm -f "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$uuid.mobileprovision"

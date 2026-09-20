@@ -85,10 +85,16 @@ class LocalIntakeSources(unittest.TestCase):
         self.assertIn('SharedIntake/LocalIntakeQueue.swift', sources(app))
         self.assertIn('HermesMobileTests/LocalIntakeTests.swift', sources(targets['HermesMobileTests'][1]))
         for config in objects[share['buildConfigurationList']]['buildConfigurations']:
-            settings = objects[config]['buildSettings']
+            configuration = objects[config]
+            settings = configuration['buildSettings']
             self.assertEqual(settings['APPLICATION_EXTENSION_API_ONLY'], 'YES')
             self.assertEqual(settings['PRODUCT_BUNDLE_IDENTIFIER'], 'cool.n0thing.hermes.Share')
-            self.assertEqual(settings['DEVELOPMENT_TEAM'], '')
+            if configuration['name'] == 'Release':
+                self.assertEqual(settings['DEVELOPMENT_TEAM'], 'VYJS7JMXU5')
+                self.assertEqual(settings['CODE_SIGN_STYLE'], 'Manual')
+                self.assertEqual(settings['PROVISIONING_PROFILE_SPECIFIER'], 'cool.n0thing.hermes.Share')
+            else:
+                self.assertEqual(settings['DEVELOPMENT_TEAM'], '')
         info = plistlib.loads((ROOT / 'HermesShareExtension/Info.plist').read_bytes())
         self.assertEqual(info['NSExtension']['NSExtensionPointIdentifier'], 'com.apple.share-services')
         rule = info['NSExtension']['NSExtensionAttributes']['NSExtensionActivationRule']

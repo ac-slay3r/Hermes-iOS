@@ -60,6 +60,11 @@ class IntegratedProjectTests(unittest.TestCase):
         for path in ('HermesMobile/Resources/Info.plist', 'HermesMobileWidgets/Info.plist', 'HermesShareExtension/Info.plist'):
             self.assertEqual(plistlib.loads((ROOT / path).read_bytes())['CFBundleVersion'], '$(CURRENT_PROJECT_VERSION)')
         self.assertIn('- target: HermesShareExtension', specification)
+        share = specification.split('  HermesShareExtension:\n', 1)[1].split('  HermesMobileTests:\n', 1)[0]
+        for token in ('DEVELOPMENT_TEAM: VYJS7JMXU5', 'CODE_SIGN_STYLE: Manual',
+                      'CODE_SIGN_IDENTITY: Apple Distribution',
+                      'PROVISIONING_PROFILE_SPECIFIER: cool.n0thing.hermes.Share'):
+            self.assertIn(token, share)
 
 
 if __name__ == '__main__':

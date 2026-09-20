@@ -46,6 +46,16 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("continue-on-error", before_credentials)
         self.assertNotIn("if:", before_credentials)
 
+    def test_signed_release_includes_and_verifies_share_extension(self):
+        text = (ROOT / ".github/workflows/testflight.yml").read_text()
+        for token in ("SHARE_BUNDLE_ID: cool.n0thing.hermes.Share",
+                      "SHARE_PROFILE_NAME: cool.n0thing.hermes.Share",
+                      "IOS_SHARE_PROFILE_BASE64", "HermesShareExtension.appex",
+                      "Verify exported IPA signatures, profiles, and bundle versions",
+                      "Verify uploaded build appears in App Store Connect"):
+            self.assertIn(token, text)
+        self.assertIn('<key>$SHARE_BUNDLE_ID</key><string>$SHARE_PROFILE_NAME</string>', text)
+
     def test_ci_preserves_required_names_and_runs_script_tests(self):
         text = (ROOT / ".github/workflows/ios-ci.yml").read_text()
         for name in ("Native iOS simulator build", "Native iOS unit tests", "Relay tests", "Connector tests"):
