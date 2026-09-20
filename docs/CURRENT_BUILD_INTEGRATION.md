@@ -54,7 +54,7 @@ The general dashboard configuration response is not a proven secret-safe project
 - Linux executable source/regression suite: passing after the product correction and first client slice.
 - Swift XCTest/UI test source: added for dashboard hierarchy, request ordering/decoding, exact target binding, and `401` fail-closed behavior.
 - Previous product-correction SHA `36fcbc31c44dfc051bd9c5065e9cc2e4144a3124`: native build and tests passed in GitHub Actions.
-- Current authentication source: native compilation and XCTest/UI execution pending exact-SHA CI.
+- Current authentication SHA `9e1b09b7b8dc431f66b5f64d60da02b3bebd2f62`: simulator build, native XCTest/UI tests, relay tests, and connector tests passed in exact-SHA GitHub Actions run `35521639784`.
 - Live host authentication/read: pending compatible gateway deployment and physical-device verification.
 - Native write/readback: not run and not authorized by this scope decision.
 - TestFlight/release: not attempted; exact-SHA native and signing gates remain required.
