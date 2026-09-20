@@ -20,6 +20,12 @@ class FoundationAPISourceTests(unittest.TestCase):
                     r'setAttributes\(\[\.protectionKey:\s*FileProtectionType\.complete\],\s*ofItemAtPath:\s*url\.path\)',
                 )
 
+    def test_document_camera_conformance_preserves_main_actor_isolation(self):
+        source = (ROOT / 'HermesMobile/LocalCapture/LocalImagePicker.swift').read_text()
+        self.assertIn('@MainActor final class Coordinator', source)
+        self.assertIn('@MainActor VNDocumentCameraViewControllerDelegate', source)
+        self.assertNotIn('@preconcurrency', source)
+
     def test_no_swift_set_attributes_calls_use_at_path_label(self):
         for directory in ROOT.iterdir():
             if directory.name.startswith('Hermes') or directory.name == 'SharedIntake':

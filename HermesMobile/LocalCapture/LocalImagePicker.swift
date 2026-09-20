@@ -35,8 +35,10 @@ struct LocalImagePicker: UIViewControllerRepresentable {
 
     func updateUIViewController(_ controller: UIViewController, context: Context) {}
 
+    // VisionKit's delegate requirements are nonisolated; this UIKit coordinator
+    // and its conformance must stay on the main actor for rendering/completion.
     @MainActor final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate,
-        PHPickerViewControllerDelegate, VNDocumentCameraViewControllerDelegate {
+        PHPickerViewControllerDelegate, @MainActor VNDocumentCameraViewControllerDelegate {
         let completion: ([Data]?, String?) -> Void
         init(completion: @escaping ([Data]?, String?) -> Void) { self.completion = completion }
 
