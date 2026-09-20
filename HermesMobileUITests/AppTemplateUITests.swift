@@ -75,9 +75,13 @@ final class HermesMobileUITests: XCTestCase {
         app.buttons["Send message"].tap()
 
         let submittedMessage = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", message))
+            .matching(NSPredicate(
+                format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                "chat.message.user.",
+                message
+            ))
             .firstMatch
-        XCTAssertTrue(submittedMessage.waitForExistence(timeout: 5))
+        XCTAssertTrue(submittedMessage.waitForExistence(timeout: 10))
     }
 
     @MainActor

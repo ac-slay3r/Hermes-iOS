@@ -96,6 +96,7 @@ struct MessageBubble: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("chat.message.user.\(message.id.uuidString)")
         .accessibilityLabel("\(message.isVoiceTranscript ? "Voice" : "You"): \(message.content). \(message.status.rawValue)")
     }
 

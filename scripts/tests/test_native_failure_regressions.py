@@ -14,7 +14,9 @@ class NativeFailureRegressions(unittest.TestCase):
         self.assertIn("await fulfillment(of: [completed], timeout: 2)", local)
         foreground = stores.split("func testForegroundRetriesOfflineInitializationAndLoadsConnectedStores", 1)[1].split("func testManualInitializationRetryRecoversWithoutForegrounding", 1)[0]
         self.assertIn("await container.activateCompanionRuntime()", foreground)
-        self.assertIn('matching(NSPredicate(format: "label CONTAINS %@", message))', ui)
+        bubble = (ROOT / "HermesMobile/Features/Chat/MessageBubble.swift").read_text()
+        self.assertIn('accessibilityIdentifier("chat.message.user.', bubble)
+        self.assertIn('"identifier BEGINSWITH %@ AND label CONTAINS %@"', ui)
 
     def test_xctest_autoclosures_do_not_contain_async_calls(self):
         source = (ROOT / "HermesMobileTests/AdminClientTests.swift").read_text()
