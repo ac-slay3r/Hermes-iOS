@@ -210,7 +210,7 @@ final class LocalCaptureStore {
     }
 
     static func protect(_ url: URL) throws {
-        try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], atPath: url.path)
+        try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: url.path)
         var target = url
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
