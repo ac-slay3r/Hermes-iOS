@@ -52,6 +52,10 @@ struct AdminRoot: View {
                         LabeledContent("Dashboard", value: target.baseURL.absoluteString)
                         LabeledContent("Target profile", value: target.profile)
                         LabeledContent("Signed-in identity", value: "Not authenticated")
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("Signed-in identity")
+                            .accessibilityValue("Not authenticated")
+                            .accessibilityIdentifier("admin.identity")
                         LabeledContent("Serving profile", value: "Unknown")
                     }
                 }

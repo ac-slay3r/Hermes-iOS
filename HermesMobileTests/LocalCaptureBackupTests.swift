@@ -75,16 +75,24 @@ final class LocalCaptureBackupTests: XCTestCase {
                 XCTAssertEqual(capture.tasks, old.tasks)
                 XCTAssertEqual(capture.createdAt, old.createdAt)
                 XCTAssertTrue(capture.isPinned && capture.isArchived)
+                let source = try XCTUnwrap(reopened.backupSources().first { $0.capture.id == capture.id })
+                let metadata = source.folder.appendingPathComponent("capture.json")
+                XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: metadata.path)[.protectionKey] as? String, FileProtectionType.complete.rawValue)
+                XCTAssertEqual(try metadata.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
                 for (index, name) in capture.attachments.enumerated() {
                     let url = try reopened.attachmentURL(capture, name: name)
                     XCTAssertEqual(try Data(contentsOf: url), index == 0 ? Data([1, 2, 3]) : Data())
                     XCTAssertEqual(try url.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
-                    XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.protectionKey] as? FileProtectionType, .complete)
+                    XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.protectionKey] as? String, FileProtectionType.complete.rawValue)
                 }
             }
             var copy = try XCTUnwrap(reopened.captures.first { !originals.map(\.id).contains($0.id) })
             copy.title = "Edited copy"
             try reopened.save(copy)
+            let rewrittenSource = try XCTUnwrap(reopened.backupSources().first { $0.capture.id == copy.id })
+            let rewrittenMetadata = rewrittenSource.folder.appendingPathComponent("capture.json")
+            XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: rewrittenMetadata.path)[.protectionKey] as? String, FileProtectionType.complete.rawValue)
+            XCTAssertEqual(try rewrittenMetadata.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
             let second = try export(reopened)
             let preview = try LocalCaptureArchive.prepare(url: second.url, root: reopened.root)
             XCTAssertTrue(preview.captures.contains { $0.title == "Edited copy" })

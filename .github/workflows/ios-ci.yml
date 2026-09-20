@@ -56,8 +56,17 @@ jobs:
           -scheme HermesMobile
           -configuration Debug
           -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}'
+          -resultBundlePath NativeTests.xcresult
           CODE_SIGNING_ALLOWED=NO
           test
+      - name: Preserve native test diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-tests-${{ github.sha }}
+          path: NativeTests.xcresult
+          retention-days: 7
+          if-no-files-found: warn
 
   relay-tests:
     name: Relay tests

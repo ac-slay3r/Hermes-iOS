@@ -1,6 +1,21 @@
 import XCTest
 
 final class LocalCaptureUITests: XCTestCase {
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication,
+                                   upward: Bool = true, file: StaticString = #filePath, line: UInt = #line) {
+        // SwiftUI List materializes rows lazily. Waiting alone never scrolls to a row.
+        for _ in 0..<12 {
+            if element.exists && element.isHittable { return }
+            if upward { app.swipeUp(velocity: .slow) }
+            else { app.swipeDown(velocity: .slow) }
+        }
+        XCTAssertTrue(element.exists && element.isHittable, app.debugDescription, file: file, line: line)
+    }
+
     @MainActor private func openWorkspace(_ app: XCUIApplication) {
         let entry = app.buttons["admin.localWorkspace"]
         app.swipeUp()
@@ -26,11 +41,11 @@ final class LocalCaptureUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Tap Review when you are ready. No analysis runs automatically."].exists)
         copy.tap()
         copy.typeText(" changed copy")
-        app.buttons["Done"].tap()
+        app.navigationBars["Review on device"].buttons["Done"].tap()
         XCTAssertEqual(editor.value as? String, original)
         app.buttons["capture.aiReview"].tap()
         XCTAssertEqual(copy.value as? String, original)
-        app.buttons["Done"].tap()
+        app.navigationBars["Review on device"].buttons["Done"].tap()
         app.buttons["Cancel"].tap()
     }
 
@@ -47,8 +62,10 @@ final class LocalCaptureUITests: XCTestCase {
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
         search.typeText(token + "\n")
+        reveal(app.buttons["capture.actions"].firstMatch, in: app)
         app.buttons["capture.actions"].firstMatch.tap()
         app.buttons["Pin capture"].tap()
+        reveal(app.buttons["capture.checklist"].firstMatch, in: app)
         app.buttons["capture.checklist"].firstMatch.tap()
         let task = app.textFields["New checklist item"]
         task.tap()
@@ -57,13 +74,19 @@ final class LocalCaptureUITests: XCTestCase {
         let toggle = app.switches["Review locally"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         toggle.tap()
-        app.buttons["Done"].tap()
+        XCTAssertEqual(toggle.value as? String, "1")
+        app.navigationBars["Local checklist"].buttons["Done"].tap()
+        reveal(app.buttons["capture.actions"].firstMatch, in: app)
         app.buttons["capture.actions"].firstMatch.tap()
         app.buttons["Archive capture"].tap()
         XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", token)).firstMatch.exists)
+        reveal(app.buttons["capture.scope"], in: app, upward: false)
         app.buttons["capture.scope"].tap()
         app.buttons["Archived"].tap()
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", token)).firstMatch.exists)
+        let archivedReview = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "Review ", token)).firstMatch
+        reveal(archivedReview, in: app)
+        XCTAssertTrue(archivedReview.exists)
+        reveal(app.buttons["capture.actions"].firstMatch, in: app)
         app.buttons["capture.actions"].firstMatch.tap()
         app.buttons["Unarchive capture"].tap()
     }
@@ -85,10 +108,20 @@ final class LocalCaptureUITests: XCTestCase {
         let text = app.textViews["Capture text"]
         text.tap()
         text.typeText("An offline note")
+        XCTAssertTrue((field.value as? String)?.contains(title) == true)
         app.buttons["Save capture"].tap()
+        let savedReview = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "Review ", title)).firstMatch
+        reveal(savedReview, in: app)
+        savedReview.tap()
+        XCTAssertEqual(app.textViews["Capture text"].value as? String, "An offline note")
+        app.navigationBars["Review capture"].buttons["Cancel"].tap()
         app.terminate()
         app.launch()
         openWorkspace(app)
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch.waitForExistence(timeout: 5))
+        reveal(savedReview, in: app)
+        XCTAssertTrue(savedReview.exists)
+        savedReview.tap()
+        XCTAssertTrue((app.textFields["Capture title"].value as? String)?.contains(title) == true)
+        XCTAssertEqual(app.textViews["Capture text"].value as? String, "An offline note")
     }
 }

@@ -302,6 +302,13 @@ final class LocalCaptureTests: XCTestCase {
         XCTAssertFalse(LocalCapturePolicy.remoteEnabled)
     }
 
+    func testProtectionAttributeUsesFoundationStringRepresentation() throws {
+        // Apple documents protectionKey's value as NSString, not FileProtectionType.
+        // This catches the invalid conditional cast independently of filesystem support.
+        let attributes: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.complete.rawValue as NSString]
+        XCTAssertEqual(attributes[.protectionKey] as? String, FileProtectionType.complete.rawValue)
+    }
+
     func testFilesAreExcludedFromBackupAndProtected() throws {
         let root = directory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -309,7 +316,7 @@ final class LocalCaptureTests: XCTestCase {
         let note = try store.create(kind: .note, title: "Private")
         let url = root.appendingPathComponent(note.id.uuidString).appendingPathComponent("capture.json")
         XCTAssertEqual(try root.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
-        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.protectionKey] as? FileProtectionType, .complete)
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.protectionKey] as? String, FileProtectionType.complete.rawValue)
     }
 
     func testRefreshPublishesCompleteSnapshotInPlace() throws {

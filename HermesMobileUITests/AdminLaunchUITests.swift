@@ -52,8 +52,13 @@ final class AdminLaunchUITests: XCTestCase {
         address.tap()
         address.typeText("https://example.com")
         app.buttons["Review target"].tap()
-        app.swipeUp()
-        XCTAssertTrue(app.staticTexts["Not authenticated"].waitForExistence(timeout: 5))
+        let identity = app.descendants(matching: .any).matching(identifier: "admin.identity").firstMatch
+        for _ in 0..<8 {
+            if identity.exists && identity.isHittable { break }
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(identity.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(identity.value as? String, "Not authenticated")
         XCTAssertFalse(app.buttons["Apply change"].exists)
     }
 }
