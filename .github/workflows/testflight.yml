@@ -26,7 +26,7 @@ jobs:
     env:
       APPSTORE_KEY_ID: 6KJFT6L8N9
       APPSTORE_ISSUER_ID: 3166b9e4-8fd3-4e9c-b3be-036cb14a4d05
-      TMPDIR: ${{ runner.temp }}/apple-profile-private
+      TMPDIR: /tmp/hermes-apple-profile-private
     steps:
       - name: Check App Store Connect credential
         shell: bash
