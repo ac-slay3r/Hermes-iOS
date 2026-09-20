@@ -49,6 +49,7 @@ class NativeFailureRegressions(unittest.TestCase):
     def test_admin_authentication_asserts_explicit_accessibility_value(self):
         source = (ROOT / 'HermesMobile/Administration/AdminRoot.swift').read_text()
         self.assertIn('.accessibilityIdentifier("admin.identity")', source)
-        self.assertIn('.accessibilityValue("Not authenticated")', source)
+        self.assertIn('.accessibilityValue(overview?.identity.displayName ?? "Not authenticated")', source)
+        self.assertIn('.accessibilityIdentifier("admin.signIn")', source)
         ui = (ROOT / 'HermesMobileUITests/AdminLaunchUITests.swift').read_text()
         self.assertIn('identity.value as? String, "Not authenticated"', ui)

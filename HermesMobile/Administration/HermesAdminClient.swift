@@ -127,13 +127,19 @@ struct UnavailableAdminTransport: AdminTransport {
 struct HermesAdminClient {
     let transport: any AdminTransport
 
-    func readOverview(target: AdminTarget) async throws -> AdminOverview {
+    func readStatus(target: AdminTarget) async throws -> AdminHostStatus {
         let statusData = try await perform(get(
             path: "api/status",
             target: target,
             query: [URLQueryItem(name: "profile", value: target.profile)]
         ))
-        let status = try JSONDecoder().decode(AdminHostStatus.self, from: statusData)
+        return try JSONDecoder().decode(AdminHostStatus.self, from: statusData)
+    }
+
+    func readOverview(target: AdminTarget) async throws -> AdminOverview {
+        let status = try await readStatus(target: target)
+        guard !status.availableProfiles.isEmpty, status.availableProfiles.contains(target.profile)
+        else { throw AdminError.wrongTarget }
 
         // Identity must be established before reading any authenticated management context.
         let identityData = try await perform(get(path: "api/auth/me", target: target))

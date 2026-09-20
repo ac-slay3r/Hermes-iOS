@@ -52,7 +52,7 @@ Their source remains preserved. They do not appear in primary navigation and are
 
 - Validate an exact HTTPS dashboard origin and selected profile.
 - Read public `/api/status?profile=…` capability/auth metadata.
-- Add an iOS-compatible system-browser PKCE flow to Hermes; the current native route accepts desktop loopback callbacks only.
+- Add an iOS-compatible system-browser PKCE flow to Hermes; the companion gateway candidate now supplies the exact callback and distinct capability advertisement, pending deployment/device proof.
 - Exchange and refresh bearer tokens; store refresh material in Keychain; keep access tokens memory-only where practical.
 - Read `/api/auth/me` and `/api/profiles/active`, then show host, identity, serving profile, active profile, selected target, token expiry, and connection state.
 - Reject cross-origin redirects and fail closed on expired/mismatched identity.
@@ -107,12 +107,13 @@ Their source remains preserved. They do not appear in primary navigation and are
 
 ## Current implementation slice
 
-Work started with the M1 client boundary:
+The M1 source implementation now:
 
 1. Read the selected profile's public status from `/api/status?profile=…`.
 2. Require authenticated `/api/auth/me` identity before protected management context.
 3. Read active and serving profiles from `/api/profiles/active`.
 4. Return one immutable overview bound to the reviewed `AdminTarget`.
-5. Keep production networking disabled until the iOS callback/authentication contract is implemented and verified.
+5. Requires `native_ios_pkce`, uses system-browser PKCE, rotates refresh credentials in this-device-only Keychain storage, keeps access tokens in memory, and rejects redirects/cross-target requests.
+6. Renders verified dashboard identity, gateway state, and serving profile only after authenticated readback.
 
-Native XCTest defines request ordering, decoding, exact base-path preservation, profile query binding, and fail-closed behavior on `401`. Linux source guards cover structural inclusion only; native execution still requires Xcode CI.
+Native XCTest defines PKCE, callback/state, token exchange/refresh, request ordering, decoding, exact base-path preservation, profile query binding, and fail-closed behavior. Linux source guards cover structural inclusion only; this authentication candidate still requires exact-SHA Xcode CI, compatible gateway deployment, and physical-device validation.

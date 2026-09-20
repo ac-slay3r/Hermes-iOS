@@ -3,6 +3,331 @@ import XCTest
 
 @MainActor
 final class AdminClientTests: XCTestCase {
+    func testAdminPKCEUsesRFC7636S256() throws {
+        let pkce = try AdminPKCE(
+            verifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        )
+        XCTAssertEqual(pkce.challenge, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+    }
+
+    func testNativeAuthorizationAndCallbackRemainBoundToExactTargetAndState() throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let pkce = try AdminPKCE(verifier: String(repeating: "a", count: 43))
+        let attempt = try AdminAuthorizationAttempt(
+            target: target,
+            provider: "nous",
+            pkce: pkce,
+            state: "state-1"
+        )
+        let components = try XCTUnwrap(URLComponents(url: attempt.authorizationURL, resolvingAgainstBaseURL: false))
+        XCTAssertEqual(components.path, "/dashboard/auth/native/authorize")
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: try XCTUnwrap(components.queryItems).map { ($0.name, $0.value ?? "") }), [
+            "provider": "nous",
+            "code_challenge": pkce.challenge,
+            "code_challenge_method": "S256",
+            "redirect_uri": "cool.n0thing.hermes:/oauth/callback",
+            "state": "state-1"
+        ])
+
+        XCTAssertEqual(
+            try attempt.authorizationCode(from: try XCTUnwrap(URL(string: "cool.n0thing.hermes:/oauth/callback?code=code-1&state=state-1"))),
+            "code-1"
+        )
+        for callback in [
+            "cool.n0thing.hermes:/oauth/callback?code=code-1&state=wrong",
+            "cool.n0thing.hermes:/oauth/other?code=code-1&state=state-1",
+            "cool.n0thing.hermes.evil:/oauth/callback?code=code-1&state=state-1",
+            "cool.n0thing.hermes:/oauth/callback?code=code-1&state&state=state-1",
+            "cool.n0thing.hermes:/oauth/callback?code&code=code-1&state=state-1",
+            "cool.n0thing.hermes:/oauth/callback?error=denied&error=other&code=code-1&state=state-1",
+            "cool.n0thing.hermes:/oauth/callback?error&code=code-1&state=state-1",
+            "cool.n0thing.hermes:/oauth/callback?error=denied&state=wrong"
+        ] {
+            XCTAssertThrowsError(try attempt.authorizationCode(from: try XCTUnwrap(URL(string: callback))))
+        }
+    }
+
+    func testNativeTokenExchangeUsesReviewedOriginAndDecodesBearerTokens() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"access_token":"access-1","refresh_token":"refresh-1","token_type":"Bearer","expires_at":1900000000,"provider":"nous","user_id":"user-1"}"#)
+        ])
+        let client = HermesAdminAuthClient(transport: transport)
+
+        let tokens = try await client.exchangeCode("code-1", verifier: "verifier-1", target: target)
+
+        XCTAssertEqual(tokens.accessToken, "access-1")
+        XCTAssertEqual(tokens.refreshToken, "refresh-1")
+        XCTAssertEqual(tokens.provider, "nous")
+        XCTAssertEqual(tokens.userID, "user-1")
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/auth/native/token")
+        XCTAssertEqual(request.httpMethod, "POST")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: String])
+        XCTAssertEqual(body, ["code": "code-1", "code_verifier": "verifier-1"])
+    }
+
+    func testAdminAuthSessionUsesSystemCallbackAndPersistsOnlyRefreshCredential() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"access_token":"access-1","refresh_token":"refresh-1","token_type":"Bearer","expires_at":1900000000,"provider":"nous","user_id":"user-1"}"#)
+        ])
+        let browser = AdminFixtureWebAuthentication()
+        let credentials = AdminFixtureCredentialStore()
+        let session = AdminAuthSession(
+            browser: browser,
+            client: HermesAdminAuthClient(transport: transport),
+            credentialStore: credentials
+        )
+
+        try await session.signIn(target: target, provider: "nous")
+
+        XCTAssertEqual(session.accessToken, "access-1")
+        XCTAssertEqual(session.authenticatedTarget, target)
+        XCTAssertEqual(browser.callbackScheme, "cool.n0thing.hermes")
+        XCTAssertEqual(credentials.saved?.refreshToken, "refresh-1")
+        XCTAssertEqual(credentials.saved?.provider, "nous")
+        XCTAssertEqual(credentials.saved?.userID, "user-1")
+        XCTAssertFalse(credentials.encodedPayload?.contains("access-1") == true)
+        try await session.validate(identity: AdminIdentity(
+            userID: "user-1",
+            email: "admin@example.com",
+            displayName: "Admin",
+            organizationID: "org-1",
+            provider: "nous",
+            expiresAt: 1_900_000_000
+        ))
+        do {
+            try await session.validate(identity: AdminIdentity(
+                userID: "other-user",
+                email: "admin@example.com",
+                displayName: "Admin",
+                organizationID: "org-1",
+                provider: "nous",
+                expiresAt: 1_900_000_000
+            ))
+            XCTFail("Expected token and identity endpoint mismatch to be rejected")
+        } catch AdminError.wrongTarget {
+            // Expected: mismatched credentials are removed rather than accepted.
+        }
+        XCTAssertNil(credentials.saved)
+        XCTAssertNil(session.accessToken)
+    }
+
+    func testAdminAuthSessionRestoresByRotatingStoredRefreshCredential() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"access_token":"access-2","refresh_token":"refresh-2","token_type":"Bearer","expires_at":1900000100,"provider":"nous","user_id":"user-1"}"#)
+        ])
+        let credentials = AdminFixtureCredentialStore()
+        credentials.saved = AdminStoredCredential(
+            refreshToken: "refresh-1",
+            provider: "nous",
+            userID: "user-1",
+            expiresAt: 1900000000
+        )
+        let session = AdminAuthSession(
+            browser: AdminFixtureWebAuthentication(),
+            client: HermesAdminAuthClient(transport: transport),
+            credentialStore: credentials
+        )
+
+        XCTAssertTrue(try await session.restore(target: target))
+
+        XCTAssertEqual(session.accessToken, "access-2")
+        XCTAssertEqual(credentials.saved?.refreshToken, "refresh-2")
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/auth/native/refresh")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: String])
+        XCTAssertEqual(body, ["refresh_token": "refresh-1", "provider": "nous"])
+    }
+
+    func testRefreshIdentityDriftDeletesStoredCredential() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"access_token":"access-2","refresh_token":"refresh-2","token_type":"Bearer","expires_at":1900000100,"provider":"nous","user_id":"other-user"}"#)
+        ])
+        let credentials = AdminFixtureCredentialStore()
+        credentials.saved = AdminStoredCredential(
+            refreshToken: "refresh-1", provider: "nous", userID: "user-1", expiresAt: 1_900_000_000
+        )
+        let session = AdminAuthSession(
+            browser: AdminFixtureWebAuthentication(),
+            client: HermesAdminAuthClient(transport: transport),
+            credentialStore: credentials
+        )
+
+        do {
+            _ = try await session.restore(target: target)
+            XCTFail("Expected refresh identity drift to fail")
+        } catch AdminAuthenticationError.malformedTokenResponse {
+            // Expected: a rotated token cannot change credential identity.
+        }
+        XCTAssertNil(credentials.saved)
+    }
+
+    func testCancellationWhileCredentialLoadReturnsNilFailsClosed() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let credentials = SuspendedAdminCredentialStore()
+        let session = AdminAuthSession(
+            browser: AdminFixtureWebAuthentication(),
+            client: HermesAdminAuthClient(transport: AdminFixtureTransport(responses: [])),
+            credentialStore: credentials
+        )
+        let restore = Task { try await session.restore(target: target) }
+        try await credentials.waitUntilLoading()
+
+        session.cancel()
+        credentials.finishLoad(with: nil)
+
+        do {
+            _ = try await restore.value
+            XCTFail("Expected cancelled restore")
+        } catch AdminAuthenticationError.cancelled {
+            // Expected: nil load still revalidates the operation generation.
+        }
+    }
+
+    func testSignOutClearsVolatileAuthorityWhenCredentialDeletionFails() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let credentials = AdminFixtureCredentialStore()
+        let session = AdminAuthSession(
+            browser: AdminFixtureWebAuthentication(),
+            client: HermesAdminAuthClient(transport: AdminFixtureTransport(responses: [
+                .json(#"{"access_token":"access-1","refresh_token":"refresh-1","token_type":"Bearer","expires_at":1900000000,"provider":"nous","user_id":"user-1"}"#)
+            ])),
+            credentialStore: credentials
+        )
+        try await session.signIn(target: target)
+        credentials.failDelete = true
+
+        do {
+            try await session.signOut()
+            XCTFail("Expected Keychain deletion failure")
+        } catch {
+            // Expected: persistence failure is surfaced after volatile authority is cleared.
+        }
+        XCTAssertNil(session.accessToken)
+        XCTAssertNil(session.authenticatedTarget)
+        XCTAssertNil(session.authenticatedProvider)
+        XCTAssertNil(session.authenticatedUserID)
+    }
+
+    func testSignOutClearsAuthorityBeforeCredentialDeletionCompletes() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let credentials = SuspendedDeleteCredentialStore()
+        let session = AdminAuthSession(
+            browser: AdminFixtureWebAuthentication(),
+            client: HermesAdminAuthClient(transport: AdminFixtureTransport(responses: [
+                .json(#"{"access_token":"access-1","refresh_token":"refresh-1","token_type":"Bearer","expires_at":1900000000,"provider":"nous","user_id":"user-1"}"#)
+            ])),
+            credentialStore: credentials
+        )
+        try await session.signIn(target: target)
+
+        let signOut = Task { try await session.signOut() }
+        try await credentials.waitUntilDeleting()
+
+        XCTAssertNil(session.accessToken)
+        XCTAssertNil(session.authenticatedTarget)
+        credentials.finishDelete()
+        try await signOut.value
+    }
+
+    func testStaleCancellationCannotDeleteNewerCredentialRevision() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let credentials = RacingAdminCredentialStore()
+        let staleSession = AdminAuthSession(
+            browser: AdminFixtureWebAuthentication(),
+            client: HermesAdminAuthClient(transport: AdminFixtureTransport(responses: [
+                .json(#"{"access_token":"access-old","refresh_token":"refresh-old","token_type":"Bearer","expires_at":1900000000,"provider":"nous","user_id":"user-1"}"#)
+            ])),
+            credentialStore: credentials
+        )
+        let currentSession = AdminAuthSession(
+            browser: AdminFixtureWebAuthentication(),
+            client: HermesAdminAuthClient(transport: AdminFixtureTransport(responses: [
+                .json(#"{"access_token":"access-new","refresh_token":"refresh-new","token_type":"Bearer","expires_at":1900000100,"provider":"nous","user_id":"user-1"}"#)
+            ])),
+            credentialStore: credentials
+        )
+        let staleSignIn = Task { try await staleSession.signIn(target: target) }
+        try await credentials.waitUntilFirstSaveSuspends()
+        staleSession.cancel()
+
+        try await currentSession.signIn(target: target)
+        credentials.finishFirstSave()
+        do {
+            try await staleSignIn.value
+            XCTFail("Expected stale sign-in cancellation")
+        } catch AdminAuthenticationError.cancelled {
+            // Expected: conditional cleanup may not erase the current revision.
+        }
+        XCTAssertEqual(credentials.saved?.refreshToken, "refresh-new")
+    }
+
+    func testCancellingInFlightAuthenticationPreventsExchangeAndPersistence() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [])
+        let browser = SuspendedAdminWebAuthentication()
+        let credentials = AdminFixtureCredentialStore()
+        let session = AdminAuthSession(
+            browser: browser,
+            client: HermesAdminAuthClient(transport: transport),
+            credentialStore: credentials
+        )
+        let signIn = Task { try await session.signIn(target: target) }
+        try await browser.waitUntilStarted()
+
+        session.cancel()
+
+        do {
+            try await signIn.value
+            XCTFail("Expected cancelled authentication")
+        } catch AdminAuthenticationError.cancelled {
+            // Expected: no token exchange or persistence after target invalidation.
+        }
+        XCTAssertTrue(transport.requests.isEmpty)
+        XCTAssertNil(credentials.saved)
+    }
+
+    func testAdminTransportScopeRejectsCrossOriginAndSiblingBasePaths() throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        XCTAssertNoThrow(try AdminTransportScope.validate(
+            try XCTUnwrap(URL(string: "https://example.com/dashboard/api/auth/me")),
+            target: target
+        ))
+        for address in [
+            "https://evil.example/dashboard/api/auth/me",
+            "https://example.com/dashboard-evil/api/auth/me",
+            "http://example.com/dashboard/api/auth/me",
+            "https://example.com:444/dashboard/api/auth/me",
+            "https://user@example.com/dashboard/api/auth/me",
+            "https://example.com/dashboard/%2e%2e/other",
+            "https://example.com/dashboard%2Fother/api/auth/me",
+            "https://example.com/dashboard%5Cother/api/auth/me"
+        ] {
+            XCTAssertThrowsError(try AdminTransportScope.validate(
+                try XCTUnwrap(URL(string: address)),
+                target: target
+            ))
+        }
+    }
+
+    func testPublicStatusDiscoveryStopsBeforeAuthenticatedEndpoints() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"version":"0.21.3","overall":"ok","gateway_running":true,"gateway_state":"running","active_agents":0,"active_sessions":0,"auth_required":true,"auth_flows":["cookie","native_pkce","native_ios_pkce"],"profiles":["default","work"]}"#)
+        ])
+
+        let status = try await HermesAdminClient(transport: transport).readStatus(target: target)
+
+        XCTAssertTrue(status.authFlows.contains("native_ios_pkce"))
+        XCTAssertEqual(transport.requests.count, 1)
+        XCTAssertEqual(transport.requests[0].url?.path, "/dashboard/api/status")
+        XCTAssertEqual(transport.requests[0].url?.query, "profile=work")
+    }
+
     func testOverviewBindsStatusIdentityAndProfilesToReviewedTarget() async throws {
         let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
         let transport = AdminFixtureTransport(responses: [
@@ -49,6 +374,37 @@ final class AdminClientTests: XCTestCase {
         XCTAssertEqual(transport.requests.count, 2)
     }
 
+    func testOverviewRejectsSelectedProfileMissingFromHostInventory() async throws {
+        let target = try AdminTarget(address: "https://example.com", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"version":"0.21.3","overall":"ok","gateway_running":true,"gateway_state":"running","active_agents":0,"active_sessions":0,"auth_required":true,"auth_flows":["native_ios_pkce"],"profiles":["default"]}"#),
+            .json(#"{"user_id":"user-1","email":"admin@example.com","display_name":"Admin","org_id":"org-1","provider":"nous","expires_at":1900000000}"#),
+            .json(#"{"active":"default","current":"default"}"#)
+        ])
+
+        do {
+            _ = try await HermesAdminClient(transport: transport).readOverview(target: target)
+            XCTFail("Expected selected profile rejection")
+        } catch AdminError.wrongTarget {
+            // Serving profile may differ; absence from inventory is the fail-closed condition.
+        }
+    }
+
+    func testOverviewRejectsEmptyHostProfileInventory() async throws {
+        let target = try AdminTarget(address: "https://example.com", profile: "default")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"version":"0.21.3","overall":"ok","gateway_running":true,"gateway_state":"running","active_agents":0,"active_sessions":0,"auth_required":true,"auth_flows":["native_ios_pkce"],"profiles":[]}"#)
+        ])
+
+        do {
+            _ = try await HermesAdminClient(transport: transport).readOverview(target: target)
+            XCTFail("Expected empty profile inventory rejection")
+        } catch AdminError.wrongTarget {
+            // Expected: overview cannot be bound without authoritative inventory.
+        }
+        XCTAssertEqual(transport.requests.count, 1)
+    }
+
     func testOverviewDefaultsCapabilityFieldsMissingFromOlderStatus() async throws {
         let target = try AdminTarget(address: "https://example.com", profile: "default")
         let transport = AdminFixtureTransport(responses: [
@@ -57,13 +413,13 @@ final class AdminClientTests: XCTestCase {
             .json(#"{"active":"default","current":"default"}"#)
         ])
 
-        let overview = try await HermesAdminClient(transport: transport).readOverview(target: target)
+        let status = try await HermesAdminClient(transport: transport).readStatus(target: target)
 
-        XCTAssertEqual(overview.status.overall, "unknown")
-        XCTAssertEqual(overview.status.activeAgents, 0)
-        XCTAssertFalse(overview.status.authRequired)
-        XCTAssertEqual(overview.status.authFlows, [])
-        XCTAssertEqual(overview.status.availableProfiles, [])
+        XCTAssertEqual(status.overall, "unknown")
+        XCTAssertEqual(status.activeAgents, 0)
+        XCTAssertFalse(status.authRequired)
+        XCTAssertEqual(status.authFlows, [])
+        XCTAssertEqual(status.availableProfiles, [])
     }
 
     func testTargetRejectsInsecureOrAmbiguousAuthority() throws {
@@ -283,5 +639,163 @@ private final class AdminFixtureTransport: AdminTransport {
             return AdminHTTPResponse(status: status, body: Data(value.utf8))
         case .failure: throw URLError(.timedOut)
         }
+    }
+}
+
+@MainActor
+private final class AdminFixtureWebAuthentication: AdminWebAuthenticating {
+    var callbackScheme: String?
+
+    func authenticate(url: URL, callbackScheme: String) async throws -> URL {
+        self.callbackScheme = callbackScheme
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let state = try XCTUnwrap(components.queryItems?.first { $0.name == "state" }?.value)
+        return try XCTUnwrap(URL(string: "cool.n0thing.hermes:/oauth/callback?code=code-1&state=\(state)"))
+    }
+
+    func cancel() {}
+}
+
+@MainActor
+private final class SuspendedAdminWebAuthentication: AdminWebAuthenticating {
+    private var continuation: CheckedContinuation<URL, Error>?
+
+    func authenticate(url: URL, callbackScheme: String) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation = $0 }
+    }
+
+    func waitUntilStarted() async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while continuation == nil {
+            guard Date() < deadline else { throw URLError(.timedOut) }
+            await Task.yield()
+        }
+    }
+
+    func cancel() {
+        continuation?.resume(throwing: AdminAuthenticationError.cancelled)
+        continuation = nil
+    }
+}
+
+@MainActor
+private final class AdminFixtureCredentialStore: AdminCredentialPersisting {
+    var saved: AdminStoredCredential?
+    var encodedPayload: String?
+    var failDelete = false
+
+    func save(_ credential: AdminStoredCredential, for target: AdminTarget) async throws {
+        saved = credential
+        encodedPayload = String(data: try JSONEncoder().encode(credential), encoding: .utf8)
+    }
+
+    func load(for target: AdminTarget) async throws -> AdminStoredCredential? { saved }
+
+    func delete(for target: AdminTarget) async throws {
+        if failDelete { throw URLError(.cannotRemoveFile) }
+        saved = nil
+    }
+
+    func delete(_ credential: AdminStoredCredential, for target: AdminTarget) async throws {
+        guard saved == credential else { return }
+        try await delete(for: target)
+    }
+}
+
+@MainActor
+private final class SuspendedAdminCredentialStore: AdminCredentialPersisting {
+    private var loadContinuation: CheckedContinuation<AdminStoredCredential?, Never>?
+
+    func save(_ credential: AdminStoredCredential, for target: AdminTarget) async throws {}
+
+    func load(for target: AdminTarget) async throws -> AdminStoredCredential? {
+        await withCheckedContinuation { loadContinuation = $0 }
+    }
+
+    func delete(for target: AdminTarget) async throws {}
+    func delete(_ credential: AdminStoredCredential, for target: AdminTarget) async throws {}
+
+    func waitUntilLoading() async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while loadContinuation == nil {
+            guard Date() < deadline else { throw URLError(.timedOut) }
+            await Task.yield()
+        }
+    }
+
+    func finishLoad(with credential: AdminStoredCredential?) {
+        loadContinuation?.resume(returning: credential)
+        loadContinuation = nil
+    }
+}
+
+@MainActor
+private final class SuspendedDeleteCredentialStore: AdminCredentialPersisting {
+    private var credential: AdminStoredCredential?
+    private var deleteContinuation: CheckedContinuation<Void, Never>?
+
+    func save(_ credential: AdminStoredCredential, for target: AdminTarget) async throws {
+        self.credential = credential
+    }
+
+    func load(for target: AdminTarget) async throws -> AdminStoredCredential? { credential }
+
+    func delete(for target: AdminTarget) async throws {
+        await withCheckedContinuation { deleteContinuation = $0 }
+        credential = nil
+    }
+
+    func delete(_ credential: AdminStoredCredential, for target: AdminTarget) async throws {
+        guard self.credential == credential else { return }
+        try await delete(for: target)
+    }
+
+    func waitUntilDeleting() async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while deleteContinuation == nil {
+            guard Date() < deadline else { throw URLError(.timedOut) }
+            await Task.yield()
+        }
+    }
+
+    func finishDelete() {
+        deleteContinuation?.resume()
+        deleteContinuation = nil
+    }
+}
+
+@MainActor
+private final class RacingAdminCredentialStore: AdminCredentialPersisting {
+    private(set) var saved: AdminStoredCredential?
+    private var saveCount = 0
+    private var firstSaveContinuation: CheckedContinuation<Void, Never>?
+
+    func save(_ credential: AdminStoredCredential, for target: AdminTarget) async throws {
+        saveCount += 1
+        saved = credential
+        if saveCount == 1 {
+            await withCheckedContinuation { firstSaveContinuation = $0 }
+        }
+    }
+
+    func load(for target: AdminTarget) async throws -> AdminStoredCredential? { saved }
+
+    func delete(for target: AdminTarget) async throws { saved = nil }
+
+    func delete(_ credential: AdminStoredCredential, for target: AdminTarget) async throws {
+        if saved == credential { saved = nil }
+    }
+
+    func waitUntilFirstSaveSuspends() async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while firstSaveContinuation == nil {
+            guard Date() < deadline else { throw URLError(.timedOut) }
+            await Task.yield()
+        }
+    }
+
+    func finishFirstSave() {
+        firstSaveContinuation?.resume()
+        firstSaveContinuation = nil
     }
 }

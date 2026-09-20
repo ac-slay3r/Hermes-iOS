@@ -15,9 +15,9 @@ Local capture, OCR, recording, local intelligence, intake, sensors, timeline, co
 | Administration launch | Reachable at normal launch | Does not construct `AppContainer`, start sensors/voice/relay, register push, or open legacy remote deep links. |
 | Dashboard target review | Reachable | Validates an exact HTTPS base URL and lowercase profile identifier. Review is not authentication. |
 | Dashboard management map | Reachable | Shows Overview, Configuration, Profiles/Sessions, Skills/Tools/MCP, Memory/Instructions, Automation/Connections, and System/Operations as the product hierarchy. No controls are falsely unlocked. |
-| Status/identity/profile client boundary | Implemented with authored XCTest fixtures | Requests selected-profile `/api/status`, then requires `/api/auth/me` before `/api/profiles/active`. No production transport constructs it yet; XCTest has not run on this Linux host. |
+| Status/identity/profile client boundary | Reachable after target review and sign-in | Requests selected-profile `/api/status`, requires the host's `native_ios_pkce` capability, then verifies `/api/auth/me` before `/api/profiles/active`. |
 | Session-title and SOUL correction engines | Implemented with authored XCTest fixtures, unreachable | Review/apply/readback behavior remains locked until approved authentication and transport exist; XCTest has not run on this Linux host. |
-| Production dashboard networking | Disabled | The current Hermes native auth route accepts desktop HTTP loopback callbacks only. No copied token, relay credential reuse, embedded secret, or fake host state is used. |
+| Production dashboard networking | Implemented; compatible host required | Uses an ephemeral, no-cookie/no-cache, redirect-rejecting transport bound to the reviewed HTTPS origin/base path. Access tokens stay in memory; rotating refresh credentials use this-device-only Keychain storage. No copied token or relay credential reuse. |
 | Local-only experiments | Source preserved, unreachable from `AdminRoot` | Share/Shortcuts targets may still exist structurally; normal launch does not route into local workspace or composer lab. |
 | Legacy connected app | Source preserved, unreachable | Chat, approval inbox, voice overlay, pairing, sensor pipeline, push, CarPlay, and remote containers remain gated off. |
 
@@ -31,20 +31,17 @@ The source now defines an immutable `AdminOverview` bound to the reviewed target
 
 Request order is intentional: public target-specific status → authenticated identity → protected profile context. A `401` stops before profile discovery. Existing base paths and the exact selected profile query are preserved.
 
-This is a client contract, not a claim of live connectivity. `UnavailableAdminTransport` remains the normal production boundary.
+Normal launch can now check an exact host/profile, restore a rotating native credential or open system-browser sign-in, and render verified identity/profile context. Management mutations remain locked.
 
-## Authentication blocker
+## Authentication deployment and device gate
 
-Hermes currently advertises `native_pkce`, but `/auth/native/authorize` accepts only `http://127.0.0.1[:port]/…` or `http://[::1][:port]/…` callbacks. That contract was designed for Desktop and is not yet an approved, device-verified iOS callback flow.
+The companion Hermes candidate adds the exact callback `cool.n0thing.hermes:/oauth/callback`, rejects near misses, and advertises `native_ios_pkce` separately from desktop `native_pkce`. An unpatched host is shown as incompatible rather than opening a flow it cannot complete.
 
-Before networking is enabled:
+Before claiming live authentication complete:
 
-1. Add and test an iOS-compatible system-browser PKCE callback contract in Hermes.
-2. Bind authorization and tokens to the exact reviewed HTTPS origin.
-3. Reject cross-origin redirects and malformed callback state.
-4. Store refresh material in Keychain and handle expiry/rotation without logs.
-5. Verify `/api/auth/me`, selected profile, and serving profile before unlocking management reads.
-6. Exercise wrong-host, wrong-profile, expiry, cancellation, background/resume, and unknown-network outcomes on a physical device.
+1. Land/deploy the companion Hermes gateway change on the intended dashboard host.
+2. Pass exact-SHA native compilation and XCTest/UI tests for this source slice.
+3. Exercise successful sign-in, wrong-host/profile, expiry, cancellation, background/resume, redirect rejection, and unknown-network outcomes on a physical device.
 
 Relay bearer tokens remain separate and cannot authorize dashboard administration.
 
@@ -56,8 +53,9 @@ The general dashboard configuration response is not a proven secret-safe project
 
 - Linux executable source/regression suite: passing after the product correction and first client slice.
 - Swift XCTest/UI test source: added for dashboard hierarchy, request ordering/decoding, exact target binding, and `401` fail-closed behavior.
-- Native compilation, XCTest, and UI tests: not run locally because this host has no Swift/Xcode toolchain.
-- Live host authentication/read: not run; production transport remains disabled.
+- Previous product-correction SHA `36fcbc31c44dfc051bd9c5065e9cc2e4144a3124`: native build and tests passed in GitHub Actions.
+- Current authentication source: native compilation and XCTest/UI execution pending exact-SHA CI.
+- Live host authentication/read: pending compatible gateway deployment and physical-device verification.
 - Native write/readback: not run and not authorized by this scope decision.
 - TestFlight/release: not attempted; exact-SHA native and signing gates remain required.
 

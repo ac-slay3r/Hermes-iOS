@@ -93,6 +93,11 @@ targets:
         CFBundleDisplayName: Hermes
         CFBundleShortVersionString: "1.0.0"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: Hermes dashboard authentication
+            CFBundleURLSchemes:
+              - cool.n0thing.hermes
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
