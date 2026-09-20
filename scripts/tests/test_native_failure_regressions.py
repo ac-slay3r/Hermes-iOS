@@ -1,10 +1,15 @@
 """Linux source guards only; native UI/data-protection evidence comes from Xcode."""
 from pathlib import Path
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 
 class NativeFailureRegressions(unittest.TestCase):
+    def test_xctest_autoclosures_do_not_contain_async_calls(self):
+        source = (ROOT / "HermesMobileTests/AdminClientTests.swift").read_text()
+        self.assertIsNone(re.search(r"XCTAssert\w*\([^\n]*\bawait\b", source))
+
     def test_frozen_local_capture_ui_suite_is_skipped_at_setup(self):
         source = (ROOT / 'HermesMobileUITests/LocalCaptureUITests.swift').read_text()
         self.assertIn(

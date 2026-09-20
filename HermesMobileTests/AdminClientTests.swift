@@ -132,7 +132,8 @@ final class AdminClientTests: XCTestCase {
             credentialStore: credentials
         )
 
-        XCTAssertTrue(try await session.restore(target: target))
+        let restored = try await session.restore(target: target)
+        XCTAssertTrue(restored)
 
         XCTAssertEqual(session.accessToken, "access-2")
         XCTAssertEqual(credentials.saved?.refreshToken, "refresh-2")
