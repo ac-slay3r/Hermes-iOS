@@ -18,9 +18,187 @@ env:
   WIDGET_PROFILE_NAME: cool.n0thing.hermes
 
 jobs:
+  bootstrap-share-profile:
+    name: Bootstrap Share signing profile
+    if: github.ref_type == 'branch' && github.ref_name == 'signing/share-profile'
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      APPSTORE_KEY_ID: 6KJFT6L8N9
+      APPSTORE_ISSUER_ID: 3166b9e4-8fd3-4e9c-b3be-036cb14a4d05
+      TMPDIR: ${{ runner.temp }}/apple-profile-private
+    steps:
+      - name: Check App Store Connect credential
+        shell: bash
+        env:
+          APPSTORE_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$APPSTORE_PRIVATE_KEY"
+          umask 077
+          mkdir -p "$TMPDIR"
+          printf '%s' "$APPSTORE_PRIVATE_KEY" > "$RUNNER_TEMP/AuthKey_${APPSTORE_KEY_ID}.p8"
+          grep -q -- 'BEGIN PRIVATE KEY' "$RUNNER_TEMP/AuthKey_${APPSTORE_KEY_ID}.p8"
+          grep -q -- 'END PRIVATE KEY' "$RUNNER_TEMP/AuthKey_${APPSTORE_KEY_ID}.p8"
+
+      - name: Fetch pinned Apple provisioning helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://raw.githubusercontent.com/Apple-Actions/download-provisioning-profiles/42ed97749a9f9880fc9be2c0fc094ffc066f88c4/scripts'
+          mkdir -p "$RUNNER_TEMP/apple-profile-tools/lib"
+          curl --fail --silent --show-error --location "$BASE/lib/asc.sh" -o "$RUNNER_TEMP/apple-profile-tools/lib/asc.sh"
+          curl --fail --silent --show-error --location "$BASE/ensure-bundle-id.sh" -o "$RUNNER_TEMP/apple-profile-tools/ensure-bundle-id.sh"
+          curl --fail --silent --show-error --location "$BASE/create-provisioning-profile.sh" -o "$RUNNER_TEMP/apple-profile-tools/create-provisioning-profile.sh"
+          cd "$RUNNER_TEMP/apple-profile-tools"
+          printf '%s  %s\n' \
+            'b713452e739775500123a92765ed3ac81368e72f1bc18a913d2a75545fae151b' 'lib/asc.sh' \
+            'a9d8f280c3646f796436860cda5d649f62a2bcd1e02bccf3c27b784d9fb71137' 'ensure-bundle-id.sh' \
+            'a59f4493e8d75db3274bcbee1e215258e6df7cf4a95b6bf817950b27428dfa03' 'create-provisioning-profile.sh' \
+            | shasum -a 256 --check
+          chmod 700 ensure-bundle-id.sh create-provisioning-profile.sh
+
+      - name: Register Share App ID and assign existing App Group
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOOLS="$RUNNER_TEMP/apple-profile-tools"
+          KEY="$RUNNER_TEMP/AuthKey_${APPSTORE_KEY_ID}.p8"
+          "$TOOLS/ensure-bundle-id.sh" \
+            --bundle-id cool.n0thing.hermes.Share \
+            --name 'Hermes Share Extension' \
+            --issuer-id "$APPSTORE_ISSUER_ID" \
+            --api-key-id "$APPSTORE_KEY_ID" \
+            --api-private-key-path "$KEY"
+
+          source "$TOOLS/lib/asc.sh"
+          ASC_ISSUER_ID="$APPSTORE_ISSUER_ID"
+          ASC_KEY_ID="$APPSTORE_KEY_ID"
+          ASC_PRIVATE_KEY_PATH="$KEY"
+          asc_load_credentials
+          asc_api_get '/v1/bundleIds?filter[identifier]=cool.n0thing.hermes.Share&limit=2'
+          BUNDLE_RESOURCE_ID="$(printf '%s' "$ASC_API_BODY" | jq -er '.data[] | select(.attributes.identifier == "cool.n0thing.hermes.Share") | .id')"
+          asc_api_get "/v1/bundleIds/$BUNDLE_RESOURCE_ID/bundleIdCapabilities"
+          CAPABILITY_ID="$(printf '%s' "$ASC_API_BODY" | jq -r '.data[] | select(.attributes.capabilityType == "APP_GROUPS") | .id' | head -n1)"
+          SETTINGS='[{"key":"APP_GROUP_IDS","options":[{"key":"group.cool.n0thing.hermes","enabled":true}]}]'
+          if test -z "$CAPABILITY_ID"; then
+            BODY="$(jq -n --arg id "$BUNDLE_RESOURCE_ID" --argjson settings "$SETTINGS" '{data:{type:"bundleIdCapabilities",attributes:{capabilityType:"APP_GROUPS",settings:$settings},relationships:{bundleId:{data:{type:"bundleIds",id:$id}}}}}')"
+            asc_api_post '/v1/bundleIdCapabilities' "$BODY"
+          else
+            BODY="$(jq -n --arg id "$CAPABILITY_ID" --argjson settings "$SETTINGS" '{data:{type:"bundleIdCapabilities",id:$id,attributes:{settings:$settings}}}')"
+            asc_api PATCH "/v1/bundleIdCapabilities/$CAPABILITY_ID" "$BODY"
+          fi
+
+      - name: Create or reuse Share App Store profile
+        shell: bash
+        env:
+          IOS_MAIN_PROFILE_BASE64: ${{ secrets.IOS_MAIN_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEY="$RUNNER_TEMP/AuthKey_${APPSTORE_KEY_ID}.p8"
+          MAIN_PROFILE="$RUNNER_TEMP/main.mobileprovision"
+          MAIN_PLIST="$RUNNER_TEMP/main-profile.plist"
+          trap 'rm -f "$MAIN_PROFILE" "$MAIN_PLIST"' EXIT
+          printf '%s' "$IOS_MAIN_PROFILE_BASE64" | /usr/bin/base64 -D > "$MAIN_PROFILE"
+          security cms -D -i "$MAIN_PROFILE" > "$MAIN_PLIST"
+          CERT_SHA="$(python3 - "$MAIN_PLIST" <<'PY'
+          import hashlib, plistlib, sys
+          with open(sys.argv[1], 'rb') as handle:
+              profile = plistlib.load(handle)
+          certificates = profile.get('DeveloperCertificates', [])
+          if len(certificates) != 1:
+              raise SystemExit('Expected exactly one certificate in the main distribution profile')
+          print(hashlib.sha256(certificates[0]).hexdigest())
+          PY
+          )"
+          printf '%s\n' "$CERT_SHA" > "$RUNNER_TEMP/expected-share-cert.sha256"
+
+          source "$RUNNER_TEMP/apple-profile-tools/lib/asc.sh"
+          ASC_ISSUER_ID="$APPSTORE_ISSUER_ID"
+          ASC_KEY_ID="$APPSTORE_KEY_ID"
+          ASC_PRIVATE_KEY_PATH="$KEY"
+          asc_load_credentials
+          asc_api_get '/v1/certificates?filter[certificateType]=IOS_DISTRIBUTION,DISTRIBUTION&limit=200'
+          CERTIFICATE_ID="$(ASC_CERTIFICATES="$ASC_API_BODY" python3 - "$CERT_SHA" <<'PY'
+          import base64, hashlib, json, os, sys
+          expected = sys.argv[1]
+          matches = []
+          for item in json.loads(os.environ['ASC_CERTIFICATES']).get('data', []):
+              content = item.get('attributes', {}).get('certificateContent')
+              if content and hashlib.sha256(base64.b64decode(content)).hexdigest() == expected:
+                  matches.append(item['id'])
+          if len(matches) != 1:
+              raise SystemExit(f'Expected one matching active distribution certificate, found {len(matches)}')
+          print(matches[0])
+          PY
+          )"
+
+          "$RUNNER_TEMP/apple-profile-tools/create-provisioning-profile.sh" \
+            --bundle-id cool.n0thing.hermes.Share \
+            --profile-type IOS_APP_STORE \
+            --name cool.n0thing.hermes.Share \
+            --certificate-id "$CERTIFICATE_ID" \
+            --issuer-id "$APPSTORE_ISSUER_ID" \
+            --api-key-id "$APPSTORE_KEY_ID" \
+            --api-private-key-path "$KEY"
+
+      - name: Download Share profile
+        uses: Apple-Actions/download-provisioning-profiles@42ed97749a9f9880fc9be2c0fc094ffc066f88c4 # v6.0.0
+        with:
+          bundle-id: cool.n0thing.hermes.Share
+          profile-type: IOS_APP_STORE
+          issuer-id: ${{ env.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ env.APPSTORE_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+
+      - name: Verify and stage exact Share profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          FOUND=0
+          while IFS= read -r profile; do
+            plist="$RUNNER_TEMP/candidate-profile.plist"
+            security cms -D -i "$profile" > "$plist"
+            app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$plist")"
+            name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$plist")"
+            if test "$app_id" = "$TEAM_ID.cool.n0thing.hermes.Share" && test "$name" = 'cool.n0thing.hermes.Share'; then
+              python3 - "$plist" "$RUNNER_TEMP/expected-share-cert.sha256" <<'PY'
+          import hashlib, plistlib, pathlib, sys
+          with open(sys.argv[1], 'rb') as handle:
+              profile = plistlib.load(handle)
+          groups = profile.get('Entitlements', {}).get('com.apple.security.application-groups')
+          if groups != ['group.cool.n0thing.hermes']:
+              raise SystemExit(f'Unexpected App Groups in Share profile: {groups!r}')
+          certificates = profile.get('DeveloperCertificates', [])
+          expected = pathlib.Path(sys.argv[2]).read_text().strip()
+          if len(certificates) != 1 or hashlib.sha256(certificates[0]).hexdigest() != expected:
+              raise SystemExit('Share profile certificate does not match the approved main profile certificate')
+          PY
+              cp "$profile" "$RUNNER_TEMP/share.mobileprovision"
+              FOUND=$((FOUND + 1))
+            fi
+          done < <(find "$HOME/Library" -path '*Provisioning Profiles/*.mobileprovision' -type f -print)
+          test "$FOUND" = 1
+
+      - name: Preserve verified Share profile
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verified-share-profile
+          path: ${{ runner.temp }}/share.mobileprovision
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Remove App Store Connect private key
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/AuthKey_${APPSTORE_KEY_ID}.p8"
+          rm -f "$RUNNER_TEMP/expected-share-cert.sha256"
+          rm -rf "$TMPDIR"
+
   release-gate:
     name: Require successful iOS CI for release SHA
-    if: github.ref_type == 'branch'
+    if: github.ref_type == 'branch' && github.ref_name != 'signing/share-profile'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
