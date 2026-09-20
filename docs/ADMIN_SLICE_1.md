@@ -1,5 +1,7 @@
 # Administration slice 1 — disconnected client boundary
 
+> **Historical milestone:** This records the earlier disconnected editor slice. The current dashboard-management scope, launch hierarchy, and next work are defined by [CURRENT_BUILD_INTEGRATION.md](CURRENT_BUILD_INTEGRATION.md) and [DASHBOARD_PARITY_ROADMAP.md](DASHBOARD_PARITY_ROADMAP.md).
+
 ## Delivered source scope
 
 Normal launch is administration-first, using the original charcoal/gold design tokens. It does not construct the conversation container, register push, start voice/sensors, or open old deep links. The operator can review an explicit HTTPS dashboard address and exact target profile. Neither is presented as authenticated identity; serving profile remains unknown.

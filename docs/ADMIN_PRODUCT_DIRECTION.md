@@ -1,8 +1,8 @@
 # Approved Hermes iOS administration scope
 
-> **Integration update:** Administration remains primary. Explicitly authorized local features are now secondary supporting tools; automatic connected/sensor/voice startup remains disabled. This document preserves earlier milestone evidence and may describe superseded launch/scope or test counts. The [current build integration matrix](CURRENT_BUILD_INTEGRATION.md) is authoritative for reachability, gaps and release blockers.
+> **Current direction:** Hermes iOS is the native client for Hermes web-dashboard features and configuration. The dashboard capability set and source-verified APIs define the product map. Local capture/voice/intake/sensor experiments are frozen and absent from primary navigation. See [current integration](CURRENT_BUILD_INTEGRATION.md) and the [dashboard parity roadmap](DASHBOARD_PARITY_ROADMAP.md).
 
-The sole primary purpose is a native client for users to administer their Hermes agent: supported toggles, settings, capabilities, operations, and inspection/editing/correction of stored information. Preserve the original native charcoal/gold visual foundation.
+The sole primary purpose is a native iOS client for the Hermes web dashboard: expose its supported configuration, capabilities, operations, connections, sessions, and stored-information workflows through native mobile interaction. Preserve the original charcoal/gold visual foundation.
 
 This supersedes the capture-first, daily-life assistant, timeline, and assisted-session product directions. Prior implementations are frozen and preserved, not removed or automatically activated. Prior mockups are historical, not current product specifications.
 
@@ -24,6 +24,6 @@ Navigation proposals (Overview, Manage, Knowledge) remain subject to capability 
 
 ## Immediate work
 
-Read-only inventory of documented and implemented Hermes settings/editing APIs. Distinguish dashboard, mobile relay, CLI-only and unverified capabilities; inspect source and schemas without exposing secret values. No configuration or production writes are authorized merely by this product decision.
+Implement connection/status, authenticated identity, and exact profile context first; then build the read-only dashboard hierarchy before enabling writes. Distinguish dashboard, mobile relay, CLI-only and unverified capabilities without exposing secret values. No configuration or production writes are authorized merely by this product decision.
 
 Native build/device testing and earlier code integration remain pending. This document records scope, not delivery.

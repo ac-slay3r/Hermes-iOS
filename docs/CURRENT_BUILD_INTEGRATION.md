@@ -1,51 +1,66 @@
-# Administration build: integrated supporting tools
+# Current Hermes iOS dashboard-management integration
 
-This document supersedes earlier local-only launch and frozen-experiment scope statements. Administration remains the primary launch surface. Local features are explicitly supporting tools, not a return to a scrapbook-first product or authorization to resume historical sensor collection.
+This document is authoritative for current launch reachability and validation boundaries. The detailed product sequence and acceptance gates live in [DASHBOARD_PARITY_ROADMAP.md](DASHBOARD_PARITY_ROADMAP.md).
 
-## Reachability from the installed app
+## Current product contract
 
-| Feature | Entry path | Boundary |
+Hermes iOS is the native client for Hermes web-dashboard features and configuration. The dashboard's shipped capability set and source-verified APIs define the roadmap. The app preserves the charcoal/gold native visual system and translates dashboard tasks into mobile workflows.
+
+Local capture, OCR, recording, local intelligence, intake, sensors, timeline, composer-lab, legacy chat, and voice implementations are preserved historical work. They are frozen and absent from normal-launch primary navigation unless explicitly reauthorized.
+
+## Reachability from the current source
+
+| Surface | Current state | Boundary |
 | --- | --- | --- |
-| Administration | Normal launch → Hermes | Disconnected; settings projection and approved native sign-in remain unavailable. No fake credentials or unlocked writes. |
-| Text/photo/scan/OCR | Hermes → Supporting tools → Local workspace → New text note / Take photo / Import photo / Scan document; saved image → Recognize text on device | Explicit taps; original images retained. Photo picker may download a selected iCloud original. |
-| Voice recording/playback/transcription | Local workspace → Record voice; saved voice → Play recording / Transcribe offline | Local microphone only after explicit permission/tap; offline speech required, no server fallback. |
-| Search/pin/archive/checklist | Local workspace → search / Library filters / Capture actions / Checklist | Local organization only, no task execution or scheduling. |
-| On-device AI review | Saved capture → Review capture → Open AI review → Review on device | Temporary editable copy, including unsaved text; no automatic generation/apply, remote fallback or capture upload. Device/model capability may be unavailable. |
-| Files backup | Local workspace → Storage & backup | Explicit export destination and validated import confirmation; repeated imports create copies. See capacity warning below. |
-| Shared text/link intake | Another app → Share → Save to Hermes → Preview → Save to local inbox; Hermes → Local workspace → Open local inbox | One plain-text or HTTP(S) URL item. No URL fetching. Extension target is embedded but **distribution signing is blocked**. |
-| Shortcuts | Save text to local inbox / Open local inbox | App Intents registered, device authentication and save confirmation required; request routes into supporting workspace, never remote shell. Native discovery/execution still needs validation. |
-| Composer/tool accessibility polish | Hermes → Supporting tools → Chat composer lab | Uses real polished composer and tool rail with clearly labelled sample activity. Draft-only lab; no sending, attachments, dictation or approval dispatch. |
+| Administration launch | Reachable at normal launch | Does not construct `AppContainer`, start sensors/voice/relay, register push, or open legacy remote deep links. |
+| Dashboard target review | Reachable | Validates an exact HTTPS base URL and lowercase profile identifier. Review is not authentication. |
+| Dashboard management map | Reachable | Shows Overview, Configuration, Profiles/Sessions, Skills/Tools/MCP, Memory/Instructions, Automation/Connections, and System/Operations as the product hierarchy. No controls are falsely unlocked. |
+| Status/identity/profile client boundary | Implemented with authored XCTest fixtures | Requests selected-profile `/api/status`, then requires `/api/auth/me` before `/api/profiles/active`. No production transport constructs it yet; XCTest has not run on this Linux host. |
+| Session-title and SOUL correction engines | Implemented with authored XCTest fixtures, unreachable | Review/apply/readback behavior remains locked until approved authentication and transport exist; XCTest has not run on this Linux host. |
+| Production dashboard networking | Disabled | The current Hermes native auth route accepts desktop HTTP loopback callbacks only. No copied token, relay credential reuse, embedded secret, or fake host state is used. |
+| Local-only experiments | Source preserved, unreachable from `AdminRoot` | Share/Shortcuts targets may still exist structurally; normal launch does not route into local workspace or composer lab. |
+| Legacy connected app | Source preserved, unreachable | Chat, approval inbox, voice overlay, pairing, sensor pipeline, push, CarPlay, and remote containers remain gated off. |
 
-**Still unreachable:** connected `ChatScreen`, legacy approval inbox, live voice overlay, remote pairing/sensor pipeline. Their preserved polish/source is included in the native target, not yet proven to compile or presented as a working connected feature. Restoring those paths requires independently verified session authorization and removal of automatic transport/sensing. The lab is not an authenticated chat or real tool-result viewer. The frozen `InboxItemRow` primary action still approves directly and its Details action is a no-op; keep it unreachable until a separate confirmation/details-flow fix and authorization review precede any reconnection.
+## First active vertical slice
 
-## Integration invariants
+The source now defines an immutable `AdminOverview` bound to the reviewed target. It decodes:
 
-- `AppEntry.swift` continues to launch `AdminRoot()`. CarPlay/deep links/push cannot initialize the legacy container. Remote notifications remain unregistered; background modes remain empty.
-- Supporting tools reuse `Design` charcoal/gold tokens. Closing them returns to administration; no host/profile authority is inherited by local capture.
-- Shared store refresh must publish only complete successful reads, in place, without recreating the store or scavenging live backup staging. Editors/audio/backup use the same store instance.
-- Inbox requests must defer across editors, pickers, media, OCR and storage operations. Repeated Shortcuts calls must not be lost merely because an inbox was already open.
-- Native sources and tests, Share extension dependency/embed, shared queue and App Intents are included in both the checked-in project and recursive XcodeGen inputs. Source membership checks are structural, not compilation.
+- host version, overall health, gateway state, active agents/sessions, advertised auth flows, and available profiles;
+- authenticated user identity and provider;
+- sticky active and serving profile context.
 
-## Backup reliability is not certified
+Request order is intentional: public target-specific status → authenticated identity → protected profile context. A `401` stops before profile discovery. Existing base paths and the exact selected profile query are preserved.
 
-The preserved implementation already uses streaming v2 `.hermesbackup` media rather than archive-sized base64 JSON. Its configured semantic payload bound is 256 MiB; manifest JSON is separately capped at 8 MiB. Legacy JSON is import-only with 8 MiB encoded / 4 MiB decoded bounds. This integration does not claim the old 256 MiB JSON memory problem is solved by a source-level size constant. Near-limit memory/latency, Foundation decoding overhead, Files providers, cancellation and device durability still require real native/hardware tests. Larger legacy JSON backups are refused intact; no off-device migration tool is supplied. See [BACKUP_CAPACITY.md](BACKUP_CAPACITY.md).
+This is a client contract, not a claim of live connectivity. `UnavailableAdminTransport` remains the normal production boundary.
 
-## Signing matrix and release blockers
+## Authentication blocker
 
-| Target | Bundle ID | App Group | Release signing currently declared |
-| --- | --- | --- | --- |
-| HermesMobile | `cool.n0thing.hermes` | `group.cool.n0thing.hermes` | Team `VYJS7JMXU5`, manual `cool.n0thing.hermesZ` |
-| HermesMobileWidgets | `cool.n0thing.hermes.Widgets` | same group | Team `VYJS7JMXU5`, manual `cool.n0thing.hermes` |
-| HermesShareExtension | `cool.n0thing.hermes.Share` | same group | Empty team, automatic; **no verified distribution profile** |
+Hermes currently advertises `native_pkce`, but `/auth/native/authorize` accepts only `http://127.0.0.1[:port]/…` or `http://[::1][:port]/…` callbacks. That contract was designed for Desktop and is not yet an approved, device-verified iOS callback flow.
 
-Main app retains HealthKit/read/background-delivery entitlements from the existing project; local launch does not exercise them. Widgets and Share use the shared group only. App, widget and Share build numbers use `$(CURRENT_PROJECT_VERSION)`.
+Before networking is enabled:
 
-Read-only GitHub secret-name inventory exposes main/widget profile secrets but no Share profile secret. Names alone do not prove profile content, expiry or certificate match. No profile was invented/reused, and no signing credential or portal setting changed. The existing TestFlight workflow still provisions/exports/verifies main and widget only; it is **not ready for this three-target candidate and must not be dispatched**. A verified Share App ID/group/profile and complete three-target export/signature checks are required first. The Share target is not silently excluded to obtain an archive.
+1. Add and test an iOS-compatible system-browser PKCE callback contract in Hermes.
+2. Bind authorization and tokens to the exact reviewed HTTPS origin.
+3. Reject cross-origin redirects and malformed callback state.
+4. Store refresh material in Keychain and handle expiry/rotation without logs.
+5. Verify `/api/auth/me`, selected profile, and serving profile before unlocking management reads.
+6. Exercise wrong-host, wrong-profile, expiry, cancellation, background/resume, and unknown-network outcomes on a physical device.
 
-## Verification and CI resource policy
+Relay bearer tokens remain separate and cannot authorize dashboard administration.
 
-Native regression sources and executable source guards accompany integration; source guards do not execute Swift. Linux has no Xcode/Swift toolchain. The prior permission to proceed without local native execution remains disclosed, not treated as native success.
+## Settings safety blocker
 
-GitHub billing was reported resolved with 900 included minutes left. Finish local suites, project/plist checks, security scan and independent review before one candidate push. The `feat/**` push itself triggers the exact-SHA iOS CI run: do not additionally dispatch it or rerun the old baseline. Preserve all four required release-gate jobs. Native tests depend on the unsigned build, preventing a duplicate compile after a known build failure; build/test timeouts are bounded at 20/35 runner minutes rather than 45/45. No test selection or release-gate condition was removed. macOS usage is more expensive than Linux and the stated allowance is not 900 macOS runner minutes; do not enable paid overage or change billing settings. Inspect that run and report actual status. No TestFlight dispatch without exact-SHA native gate **and** the signing blocker resolved.
+The general dashboard configuration response is not a proven secret-safe projection. Hermes iOS must not fetch, log, persist, or display arbitrary raw configuration as its first settings implementation. A server-side allowlisted/typed projection is required before schema-driven configuration inspection is unlocked.
 
-Detailed execution counts and commit/run IDs belong in the final handoff rather than a premature success claim here.
+## Verification status
+
+- Linux executable source/regression suite: passing after the product correction and first client slice.
+- Swift XCTest/UI test source: added for dashboard hierarchy, request ordering/decoding, exact target binding, and `401` fail-closed behavior.
+- Native compilation, XCTest, and UI tests: not run locally because this host has no Swift/Xcode toolchain.
+- Live host authentication/read: not run; production transport remains disabled.
+- Native write/readback: not run and not authorized by this scope decision.
+- TestFlight/release: not attempted; exact-SHA native and signing gates remain required.
+
+## Signing and retained targets
+
+The project still contains the main app, widget, and Share extension from the preserved codebase. Their presence does not make local intake part of the active product. Any future release must decide intentionally whether frozen extension/widget targets remain in the product, then validate the corresponding identifiers, entitlements, profiles, archive contents, signatures, and App Store processing for that exact target set.

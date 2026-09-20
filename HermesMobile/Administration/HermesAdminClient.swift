@@ -33,6 +33,72 @@ struct AdminSnapshot: Equatable, Sendable {
     let exists: Bool
 }
 
+struct AdminOverview: Equatable, Sendable {
+    let target: AdminTarget
+    let status: AdminHostStatus
+    let identity: AdminIdentity
+    let profiles: AdminProfileContext
+}
+
+struct AdminHostStatus: Equatable, Decodable, Sendable {
+    let version: String
+    let overall: String
+    let gatewayRunning: Bool
+    let gatewayState: String?
+    let activeAgents: Int
+    let activeSessions: Int
+    let authRequired: Bool
+    let authFlows: [String]
+    let availableProfiles: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case version, overall
+        case gatewayRunning = "gateway_running"
+        case gatewayState = "gateway_state"
+        case activeAgents = "active_agents"
+        case activeSessions = "active_sessions"
+        case authRequired = "auth_required"
+        case authFlows = "auth_flows"
+        case availableProfiles = "profiles"
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        version = try values.decode(String.self, forKey: .version)
+        overall = try values.decodeIfPresent(String.self, forKey: .overall) ?? "unknown"
+        gatewayRunning = try values.decode(Bool.self, forKey: .gatewayRunning)
+        gatewayState = try values.decodeIfPresent(String.self, forKey: .gatewayState)
+        activeAgents = try values.decodeIfPresent(Int.self, forKey: .activeAgents) ?? 0
+        activeSessions = try values.decode(Int.self, forKey: .activeSessions)
+        authRequired = try values.decodeIfPresent(Bool.self, forKey: .authRequired) ?? false
+        authFlows = try values.decodeIfPresent([String].self, forKey: .authFlows) ?? []
+        availableProfiles = try values.decodeIfPresent([String].self, forKey: .availableProfiles) ?? []
+    }
+}
+
+struct AdminIdentity: Equatable, Decodable, Sendable {
+    let userID: String
+    let email: String
+    let displayName: String
+    let organizationID: String
+    let provider: String
+    let expiresAt: Int
+
+    enum CodingKeys: String, CodingKey {
+        case userID = "user_id"
+        case email
+        case displayName = "display_name"
+        case organizationID = "org_id"
+        case provider
+        case expiresAt = "expires_at"
+    }
+}
+
+struct AdminProfileContext: Equatable, Decodable, Sendable {
+    let active: String
+    let current: String
+}
+
 struct AdminHTTPResponse: Sendable {
     let status: Int
     let body: Data
@@ -61,6 +127,23 @@ struct UnavailableAdminTransport: AdminTransport {
 struct HermesAdminClient {
     let transport: any AdminTransport
 
+    func readOverview(target: AdminTarget) async throws -> AdminOverview {
+        let statusData = try await perform(get(
+            path: "api/status",
+            target: target,
+            query: [URLQueryItem(name: "profile", value: target.profile)]
+        ))
+        let status = try JSONDecoder().decode(AdminHostStatus.self, from: statusData)
+
+        // Identity must be established before reading any authenticated management context.
+        let identityData = try await perform(get(path: "api/auth/me", target: target))
+        let identity = try JSONDecoder().decode(AdminIdentity.self, from: identityData)
+
+        let profilesData = try await perform(get(path: "api/profiles/active", target: target))
+        let profiles = try JSONDecoder().decode(AdminProfileContext.self, from: profilesData)
+        return AdminOverview(target: target, status: status, identity: identity, profiles: profiles)
+    }
+
     func read(_ resource: AdminResource, target: AdminTarget) async throws -> AdminSnapshot {
         let data = try await perform(request(resource, target: target, value: nil))
         switch resource {
@@ -85,6 +168,27 @@ struct HermesAdminClient {
         // Never reflect server bodies/errors into UI or diagnostic logs.
         guard response.body.count <= 1_048_576 else { throw AdminError.malformedResponse }
         return response.body
+    }
+
+    private func get(
+        path: String,
+        target: AdminTarget,
+        query: [URLQueryItem] = []
+    ) throws -> URLRequest {
+        guard var components = URLComponents(
+            url: target.baseURL.appendingPathComponent(path),
+            resolvingAgainstBaseURL: false
+        ) else { throw AdminError.invalidTarget }
+        components.queryItems = query.isEmpty ? nil : query
+        guard let url = components.url else { throw AdminError.invalidTarget }
+        var result = URLRequest(
+            url: url,
+            cachePolicy: .reloadIgnoringLocalCacheData,
+            timeoutInterval: 20
+        )
+        result.httpMethod = "GET"
+        result.setValue("application/json", forHTTPHeaderField: "Accept")
+        return result
     }
 
     private func request(_ resource: AdminResource, target: AdminTarget, value: String?) throws -> URLRequest {

@@ -1,6 +1,6 @@
 # Native Hermes iOS administration — capability and editing inventory
 
-> **Integration update:** Administration remains primary. Explicitly authorized local features are now secondary supporting tools; automatic connected/sensor/voice startup remains disabled. This document preserves earlier milestone evidence and may describe superseded launch/scope or test counts. The [current build integration matrix](CURRENT_BUILD_INTEGRATION.md) is authoritative for reachability, gaps and release blockers.
+> **Current direction:** Hermes iOS is the native client for Hermes web-dashboard features. Local capture/voice/intake/sensor experiments are frozen and absent from primary navigation. This inventory remains the detailed source evidence; [current integration](CURRENT_BUILD_INTEGRATION.md) and the [dashboard parity roadmap](DASHBOARD_PARITY_ROADMAP.md) govern sequencing and reachability.
 
 ## Decision and evidence boundary
 

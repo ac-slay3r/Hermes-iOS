@@ -1,6 +1,6 @@
 # Integrated local workspace
 
-> **Integration update:** Administration remains primary. Explicitly authorized local features are now secondary supporting tools; automatic connected/sensor/voice startup remains disabled. This document preserves earlier milestone evidence and may describe superseded launch/scope or test counts. The [current build integration matrix](CURRENT_BUILD_INTEGRATION.md) is authoritative for reachability, gaps and release blockers.
+> **Historical implementation:** The local workspace is frozen and absent from the current dashboard-management navigation. This document preserves earlier engineering evidence; [current integration](CURRENT_BUILD_INTEGRATION.md) and the [dashboard parity roadmap](DASHBOARD_PARITY_ROADMAP.md) govern product scope and reachability.
 
 ## Implemented
 

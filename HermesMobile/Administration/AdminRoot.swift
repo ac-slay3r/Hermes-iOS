@@ -11,9 +11,6 @@ struct AdminRoot: View {
     @State private var profile = "default"
     @State private var target: AdminTarget?
     @State private var invalidTarget = false
-    @State private var localWorkspacePresented = false
-    @State private var inboxRoute = LocalInboxRoute.shared
-    @State private var handledInboxRequest = 0
 
     var body: some View {
         NavigationStack {
@@ -59,26 +56,16 @@ struct AdminRoot: View {
                         LabeledContent("Serving profile", value: "Unknown")
                     }
                 }
-                Section("Inspect") {
-                    Label("Settings inspection unavailable", systemImage: "slider.horizontal.3")
-                    Text("The dashboard's general settings response can include credentials. A server-side secret-safe projection is required; this client does not fetch raw configuration.")
+                Section("Manage Hermes") {
+                    Label("Overview & health", systemImage: "gauge.with.dots.needle.50percent")
+                    Label("Configuration & models", systemImage: "slider.horizontal.3")
+                    Label("Profiles & sessions", systemImage: "person.2")
+                    Label("Skills, tools & MCP", systemImage: "wrench.and.screwdriver")
+                    Label("Memory & instructions", systemImage: "brain.head.profile")
+                    Label("Automation & connections", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                    Label("System & operations", systemImage: "server.rack")
+                    Text("Management areas unlock only after the selected dashboard verifies sign-in and profile context. No local-only feature grants host authority.")
                         .font(Design.Typography.footnote)
-                }
-                Section("Correct") {
-                    Label("Session titles", systemImage: "text.cursor")
-                    Label("SOUL.md instructions", systemImage: "doc.text")
-                    Text("Editors are implemented but locked until an approved iOS sign-in is verified. The existing native broker accepts only HTTP loopback callbacks; this build does not bypass that restriction or ask for copied tokens.")
-                        .font(Design.Typography.footnote)
-                }
-                Section("Supporting tools") {
-                    Button("Local workspace", systemImage: "tray.full") {
-                        localWorkspacePresented = true
-                    }
-                    .accessibilityIdentifier("admin.localWorkspace")
-                    Text("Optional notes, photos, scans, voice, checklists and Files backup. On-device tools do not grant administration access or send captures to a host.")
-                        .font(Design.Typography.footnote)
-                    NavigationLink("Chat composer lab") { ChatComposerLab() }
-                        .accessibilityIdentifier("admin.composerLab")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -90,19 +77,6 @@ struct AdminRoot: View {
             .onChange(of: profile) { _, _ in target = nil }
         }
         .preferredColorScheme(.dark)
-        .fullScreenCover(isPresented: $localWorkspacePresented) {
-            LocalCaptureRoot()
-                .preferredColorScheme(.dark)
-                .tint(Design.Brand.accent)
-        }
-        .onAppear { routeInboxRequest() }
-        .onChange(of: inboxRoute.requestID) { _, _ in routeInboxRequest() }
-    }
-
-    private func routeInboxRequest() {
-        guard inboxRoute.requestID != handledInboxRequest else { return }
-        handledInboxRequest = inboxRoute.requestID
-        localWorkspacePresented = true
     }
 }
 

@@ -3,6 +3,69 @@ import XCTest
 
 @MainActor
 final class AdminClientTests: XCTestCase {
+    func testOverviewBindsStatusIdentityAndProfilesToReviewedTarget() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"version":"0.14.0","overall":"ok","gateway_running":true,"gateway_state":"running","active_agents":2,"active_sessions":4,"auth_required":true,"auth_flows":["cookie","native_pkce"],"profiles":["default","work"]}"#),
+            .json(#"{"user_id":"user-1","email":"admin@example.com","display_name":"Admin","org_id":"org-1","provider":"nous","expires_at":1900000000}"#),
+            .json(#"{"active":"default","current":"work"}"#)
+        ])
+
+        let overview = try await HermesAdminClient(transport: transport).readOverview(target: target)
+
+        XCTAssertEqual(overview.target, target)
+        XCTAssertEqual(overview.status.version, "0.14.0")
+        XCTAssertTrue(overview.status.gatewayRunning)
+        XCTAssertEqual(overview.status.activeAgents, 2)
+        XCTAssertEqual(overview.status.activeSessions, 4)
+        XCTAssertEqual(overview.status.authFlows, ["cookie", "native_pkce"])
+        XCTAssertEqual(overview.status.availableProfiles, ["default", "work"])
+        XCTAssertEqual(overview.identity.userID, "user-1")
+        XCTAssertEqual(overview.identity.displayName, "Admin")
+        XCTAssertEqual(overview.identity.provider, "nous")
+        XCTAssertEqual(overview.profiles.active, "default")
+        XCTAssertEqual(overview.profiles.current, "work")
+        XCTAssertEqual(transport.requests.map { $0.url?.path }, [
+            "/dashboard/api/status", "/dashboard/api/auth/me", "/dashboard/api/profiles/active"
+        ])
+        XCTAssertEqual(transport.requests[0].url?.query, "profile=work")
+    }
+
+    func testOverviewStopsWhenAuthenticatedIdentityIsRejected() async throws {
+        let target = try AdminTarget(address: "https://example.com", profile: "default")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"version":"0.14.0","overall":"ok","gateway_running":true,"gateway_state":"running","active_agents":0,"active_sessions":0,"auth_required":true,"auth_flows":["native_pkce"],"profiles":["default"]}"#),
+            .http(401, #"{"detail":"Unauthorized"}"#)
+        ])
+
+        do {
+            _ = try await HermesAdminClient(transport: transport).readOverview(target: target)
+            XCTFail("Expected authentication failure")
+        } catch AdminError.http(401) {
+            // Expected. Profile discovery must not run without verified identity.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(transport.requests.count, 2)
+    }
+
+    func testOverviewDefaultsCapabilityFieldsMissingFromOlderStatus() async throws {
+        let target = try AdminTarget(address: "https://example.com", profile: "default")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"version":"0.13.0","gateway_running":false,"active_sessions":0}"#),
+            .json(#"{"user_id":"user-1","email":"","display_name":"Admin","org_id":"","provider":"nous","expires_at":1900000000}"#),
+            .json(#"{"active":"default","current":"default"}"#)
+        ])
+
+        let overview = try await HermesAdminClient(transport: transport).readOverview(target: target)
+
+        XCTAssertEqual(overview.status.overall, "unknown")
+        XCTAssertEqual(overview.status.activeAgents, 0)
+        XCTAssertFalse(overview.status.authRequired)
+        XCTAssertEqual(overview.status.authFlows, [])
+        XCTAssertEqual(overview.status.availableProfiles, [])
+    }
+
     func testTargetRejectsInsecureOrAmbiguousAuthority() throws {
         for url in ["http://example.com", "https://user:pass@example.com", "https://example.com/?token=x", "https://example.com/#x"] {
             XCTAssertThrowsError(try AdminTarget(address: url, profile: "default"))
@@ -205,6 +268,7 @@ private final class SuspendedAdminTransport: AdminTransport {
 private final class AdminFixtureTransport: AdminTransport {
     enum Response {
         case json(String)
+        case http(Int, String)
         case failure
     }
     var responses: [Response]
@@ -215,6 +279,8 @@ private final class AdminFixtureTransport: AdminTransport {
         guard !responses.isEmpty else { throw AdminError.unavailable }
         switch responses.removeFirst() {
         case .json(let value): return AdminHTTPResponse(status: 200, body: Data(value.utf8))
+        case .http(let status, let value):
+            return AdminHTTPResponse(status: status, body: Data(value.utf8))
         case .failure: throw URLError(.timedOut)
         }
     }
