@@ -243,11 +243,23 @@ jobs:
           ASC_JWT=$(make_token)
           DETAIL=$(curl --fail --silent --show-error --globoff -H "Authorization: Bearer ${ASC_JWT}" \
             "https://api.appstoreconnect.apple.com/v1/builds/$BUILD_ID/buildBetaDetail")
-          printf '%s' "$DETAIL" | python3 -c 'import json,sys; a=json.load(sys.stdin)["data"]["attributes"]; print("internalBuildState="+a["internalBuildState"]); print("externalBuildState="+a["externalBuildState"])'
-          ASC_JWT=$(make_token)
-          GROUPS=$(curl --fail --silent --show-error --globoff -H "Authorization: Bearer ${ASC_JWT}" \
-            "https://api.appstoreconnect.apple.com/v1/builds/$BUILD_ID/betaGroups?fields[betaGroups]=name,isInternalGroup&limit=50")
-          printf '%s' "$GROUPS" | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; print("betaGroups="+json.dumps([x["attributes"] for x in d],sort_keys=True))'
+          DETAIL_ID=$(printf '%s' "$DETAIL" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["id"])')
+          INTERNAL_STATE=$(printf '%s' "$DETAIL" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["attributes"]["internalBuildState"])')
+          if test "$INTERNAL_STATE" = MISSING_EXPORT_COMPLIANCE; then
+            BODY=$(python3 - "$DETAIL_ID" <<'PY'
+          import json, sys
+          print(json.dumps({'data': {'type': 'buildBetaDetails', 'id': sys.argv[1], 'attributes': {'usesNonExemptEncryption': False}}}, separators=(',', ':')))
+          PY
+          )
+            ASC_JWT=$(make_token)
+            curl --fail --silent --show-error --globoff -X PATCH \
+              -H "Authorization: Bearer ${ASC_JWT}" -H 'Content-Type: application/json' \
+              -d "$BODY" "https://api.appstoreconnect.apple.com/v1/buildBetaDetails/$DETAIL_ID" >/dev/null
+            ASC_JWT=$(make_token)
+            DETAIL=$(curl --fail --silent --show-error --globoff -H "Authorization: Bearer ${ASC_JWT}" \
+              "https://api.appstoreconnect.apple.com/v1/builds/$BUILD_ID/buildBetaDetail")
+          fi
+          printf '%s' "$DETAIL" | python3 -c 'import json,sys; a=json.load(sys.stdin)["data"]["attributes"]; print("internalBuildState="+a["internalBuildState"]); print("externalBuildState="+a["externalBuildState"]); assert a["internalBuildState"] == "READY_TO_TEST"'
 
   release-gate:
     name: Require successful iOS CI for release SHA
