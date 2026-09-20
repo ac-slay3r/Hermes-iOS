@@ -138,7 +138,7 @@ final class OfflineRecoveryTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let service = RecoverableBootstrapService()
         let container = await makePairedContainer(defaults: defaults, bootstrapService: service)
-        await container.initialize()
+        await container.activateCompanionRuntime()
         let failedLoadCount = service.loadCallCount
 
         // Repeated offline foregrounding must leave launch completed and pairing intact.

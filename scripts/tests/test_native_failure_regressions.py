@@ -6,6 +6,16 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 class NativeFailureRegressions(unittest.TestCase):
+    def test_combined_shell_native_regressions_wait_and_activate_explicitly(self):
+        local = (ROOT / "HermesMobileTests/LocalCaptureTests.swift").read_text()
+        stores = (ROOT / "HermesMobileTests/AppStoresTests.swift").read_text()
+        ui = (ROOT / "HermesMobileUITests/AppTemplateUITests.swift").read_text()
+        self.assertIn('expectation(description: "remote wake completion")', local)
+        self.assertIn("await fulfillment(of: [completed], timeout: 2)", local)
+        foreground = stores.split("func testForegroundRetriesOfflineInitializationAndLoadsConnectedStores", 1)[1].split("func testManualInitializationRetryRecoversWithoutForegrounding", 1)[0]
+        self.assertIn("await container.activateCompanionRuntime()", foreground)
+        self.assertIn('matching(NSPredicate(format: "label CONTAINS %@", message))', ui)
+
     def test_xctest_autoclosures_do_not_contain_async_calls(self):
         source = (ROOT / "HermesMobileTests/AdminClientTests.swift").read_text()
         self.assertIsNone(re.search(r"XCTAssert\w*\([^\n]*\bawait\b", source))

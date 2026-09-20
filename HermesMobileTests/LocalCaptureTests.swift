@@ -280,12 +280,15 @@ final class LocalCaptureTests: XCTestCase {
         XCTAssertEqual(reloaded.captures.first?.text, "")
     }
 
-    func testRemoteWakeCompletesWithoutData() {
+    func testRemoteWakeCompletesWithoutData() async {
         let delegate = HermesAppDelegate()
         var result: UIBackgroundFetchResult?
+        let completed = expectation(description: "remote wake completion")
         delegate.application(UIApplication.shared, didReceiveRemoteNotification: ["wake": true]) {
             result = $0
+            completed.fulfill()
         }
+        await fulfillment(of: [completed], timeout: 2)
         XCTAssertEqual(result, .noData)
     }
 
