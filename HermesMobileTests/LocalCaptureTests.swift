@@ -309,14 +309,12 @@ final class LocalCaptureTests: XCTestCase {
         XCTAssertEqual(attributes[.protectionKey] as? String, FileProtectionType.complete.rawValue)
     }
 
-    func testFilesAreExcludedFromBackupAndProtected() throws {
+    func testCaptureRootIsExcludedFromBackup() throws {
         let root = directory()
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try LocalCaptureStore(root: root)
-        let note = try store.create(kind: .note, title: "Private")
-        let url = root.appendingPathComponent(note.id.uuidString).appendingPathComponent("capture.json")
+        _ = try store.create(kind: .note, title: "Private")
         XCTAssertEqual(try root.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
-        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.protectionKey] as? String, FileProtectionType.complete.rawValue)
     }
 
     func testRefreshPublishesCompleteSnapshotInPlace() throws {

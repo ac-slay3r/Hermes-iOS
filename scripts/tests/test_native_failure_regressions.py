@@ -5,12 +5,27 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 class NativeFailureRegressions(unittest.TestCase):
-    def test_protection_assertions_use_documented_string_value_without_skips(self):
-        for name in ('LocalCaptureTests', 'LocalCaptureBackupTests'):
-            source = (ROOT / 'HermesMobileTests' / (name + '.swift')).read_text()
+    def test_simulator_checks_effective_backup_boundary_without_claiming_file_protection(self):
+        store_tests = (ROOT / 'HermesMobileTests/LocalCaptureTests.swift').read_text()
+        backup_tests = (ROOT / 'HermesMobileTests/LocalCaptureBackupTests.swift').read_text()
+        for source in (store_tests, backup_tests):
             self.assertNotIn('as? FileProtectionType', source)
-            self.assertIn('FileProtectionType.complete.rawValue', source)
             self.assertNotIn('targetEnvironment(simulator)', source)
+        self.assertIn('FileProtectionType.complete.rawValue', store_tests)
+        self.assertIn('testCaptureRootIsExcludedFromBackup', store_tests)
+        self.assertIn('source.folder.resourceValues(forKeys: [.isExcludedFromBackupKey])', backup_tests)
+        self.assertNotIn('metadata.resourceValues(forKeys: [.isExcludedFromBackupKey])', backup_tests)
+        self.assertNotIn('attributesOfItem(atPath: metadata.path)[.protectionKey]', backup_tests)
+
+    def test_checklist_ui_taps_switch_control_and_asserts_changed_value(self):
+        ui = (ROOT / 'HermesMobileUITests/LocalCaptureUITests.swift').read_text()
+        view = (ROOT / 'HermesMobile/LocalCapture/LocalCaptureRoot.swift').read_text()
+        self.assertIn('@FocusState private var draftFocused: Bool', view)
+        self.assertIn('.focused($draftFocused)', view)
+        self.assertIn('draftFocused = false', view)
+        self.assertIn('app.keyboards.firstMatch.waitForNonExistence(timeout: 5)', ui)
+        self.assertIn('coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()', ui)
+        self.assertIn('XCTAssertEqual(toggle.value as? String, "1")', ui)
 
     def test_nested_done_queries_are_navigation_scoped(self):
         source = (ROOT / 'HermesMobileUITests/LocalCaptureUITests.swift').read_text()

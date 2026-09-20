@@ -71,9 +71,13 @@ final class LocalCaptureUITests: XCTestCase {
         task.tap()
         task.typeText("Review locally")
         app.buttons["Add checklist item"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         let toggle = app.switches["Review locally"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-        toggle.tap()
+        XCTAssertTrue(toggle.isHittable)
+        // Tapping the element center can hit the row label without changing the
+        // SwiftUI switch. Exercise the visible switch control at its trailing edge.
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         XCTAssertEqual(toggle.value as? String, "1")
         app.navigationBars["Local checklist"].buttons["Done"].tap()
         reveal(app.buttons["capture.actions"].firstMatch, in: app)

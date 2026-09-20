@@ -580,6 +580,7 @@ private struct LocalCaptureChecklist: View {
     @State private var draft = ""
     @State private var failure: String?
     @State private var removing: LocalCaptureTask?
+    @FocusState private var draftFocused: Bool
 
     private var capture: LocalCapture? { store.captures.first { $0.id == captureID } }
 
@@ -595,10 +596,12 @@ private struct LocalCaptureChecklist: View {
                     Section("Add an item") {
                         TextField("New checklist item", text: $draft, axis: .vertical)
                             .accessibilityLabel("New checklist item")
+                            .focused($draftFocused)
                         Button("Add checklist item", systemImage: "plus") {
                             do {
                                 try store.addTask(draft, captureID: captureID)
                                 draft = ""
+                                draftFocused = false
                                 failure = nil
                             } catch { failure = error.localizedDescription }
                         }.disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
