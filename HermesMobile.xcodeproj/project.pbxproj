@@ -12,6 +12,28 @@
 		852E3063A25EE1864919C69F /* AdminRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57CA548DC02860C24B0CABFA /* AdminRoot.swift */; };
 		389F8536F5172940AD411357 /* AdminEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47615929A594A026F5460B2 /* AdminEditor.swift */; };
 		BB58B200CB42A5F2584C2AB8 /* HermesAdminClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE61F41C0A39FD9351820878 /* HermesAdminClient.swift */; };
+		95F7D5F0CCBE43C288DC29FF /* HermesShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = C5A548ED18BF4477BB87636A; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		ED7483B3B121471DAF1D8FBC /* LocalIntakeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9F335828ACD49FD91ACB687; };
+		1C263E03C808494FA94B68A4 /* LocalCaptureIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EAF6D01E1BD4BB2BB6EA5D5; };
+		FF35A6B216D4446C8979F009 /* LocalIntakeImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11584A5778B748F89D923F85; };
+		A9E03077642B45F1813A238A /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4649EB4B3D2A476B9258ABE4; };
+		E91D28368CBB494EA57B3511 /* LocalIntakeQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94BFA5CAA264674A6DA353B; };
+		2EF3023F3C8E4563A135E3D8 /* LocalIntakeQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94BFA5CAA264674A6DA353B; };
+		5C07DFC91DD5487BA4942B63 /* LocalCaptureIntelligenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76BCDFF8C78C4B2FAFC7C4B5; };
+		5537049D63154D399815E317 /* LocalCaptureIntelligenceSystemProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE6B7B16CFA04F979A12970F; };
+		73A3A46AA6624EA9A2DF4831 /* LocalCaptureIntelligenceReviewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA089EB15044D1FB70671FC; };
+		02D2927D01BB4F388B1EC6A9 /* LocalCaptureIntelligenceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E3F963159B4444AB76E434F; };
+		5AA8E5C8FEAE40BABCC32EBE /* LocalCaptureIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B60CC9E8F124C4B8850F25F; };
+		8D5BD09E0183429DA81291C5 /* LocalCaptureBackupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D1928D382804D429618A211; };
+		14085F4B0DF74932A51F9A94 /* LocalCaptureStorageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F87BD8B56AA42B39A9FBCD7; };
+		27C44C29018E4B0C964CD0B6 /* LocalCaptureBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05123AC3723B410BAEB761CD; };
+		8E6EB97783EC479A9F858C87 /* LocalCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C84E292006D64C9F888711B2; };
+		08B274CEE7034AD8BA670712 /* LocalCaptureAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FDBC9B5C0094860A6972603; };
+		B5D4067DFE4A46829E039D87 /* LocalImagePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E3D4D150A624A2AA034C1B4; };
+		47205E87653E4672A059D4F4 /* LocalCaptureRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F4929B629CE4BE19A99F0A0; };
+		9C8DDB5D6CAD42E3B6C6B93A /* LocalCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B73BD31288B412D9624C7A7; };
+		8A1BCA61EB7948AD95568C1B /* LocalCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99646D835BCD438091B1AB5C; };
+
 		02426814A334E68AC2EB077D /* VoiceState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25563E39F08D0F19F538ADD8 /* VoiceState.swift */; };
 		03B323E60712D2CA303797A3 /* MockInboxService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8D4D1AE1F87252EEB0C2FF /* MockInboxService.swift */; };
 		045CBCF8ADA710846AF339B8 /* HermesClientProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6D891E4F6D043CE9C6CC15 /* HermesClientProtocol.swift */; };
@@ -168,6 +190,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		40609A844AF3466FB197558B /* Share proxy */ = {isa = PBXContainerItemProxy; containerPortal = 2358AE5B1FB017C5923C2FD9; proxyType = 1; remoteGlobalIDString = 03C4544714FC43D3BF782F13; remoteInfo = HermesShareExtension; };
 		4E0F313148096317694C55E5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 2358AE5B1FB017C5923C2FD9 /* Project object */;
@@ -198,6 +221,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				95F7D5F0CCBE43C288DC29FF /* HermesShareExtension.appex in Embed App Extensions */,
 				D1E2F3A4B5C6D7E8F9A0B1C2 /* HermesMobileWidgets.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
@@ -211,6 +235,29 @@
 		57CA548DC02860C24B0CABFA /* AdminRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/Administration/AdminRoot.swift; sourceTree = SOURCE_ROOT; };
 		E47615929A594A026F5460B2 /* AdminEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/Administration/AdminEditor.swift; sourceTree = SOURCE_ROOT; };
 		CE61F41C0A39FD9351820878 /* HermesAdminClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/Administration/HermesAdminClient.swift; sourceTree = SOURCE_ROOT; };
+		C5A548ED18BF4477BB87636A /* HermesShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = HermesShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		60C848DCD4554BD7A8DCD2DD /* HermesShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = HermesShareExtension/HermesShareExtension.entitlements; sourceTree = SOURCE_ROOT; };
+		7A553F84958A4979A3D70213 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = HermesShareExtension/Info.plist; sourceTree = SOURCE_ROOT; };
+		E9F335828ACD49FD91ACB687 /* LocalIntakeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobileTests/LocalIntakeTests.swift; sourceTree = SOURCE_ROOT; };
+		8EAF6D01E1BD4BB2BB6EA5D5 /* LocalCaptureIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/LocalCapture/LocalCaptureIntents.swift; sourceTree = SOURCE_ROOT; };
+		11584A5778B748F89D923F85 /* LocalIntakeImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/LocalCapture/LocalIntakeImporter.swift; sourceTree = SOURCE_ROOT; };
+		4649EB4B3D2A476B9258ABE4 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesShareExtension/ShareViewController.swift; sourceTree = SOURCE_ROOT; };
+		A94BFA5CAA264674A6DA353B /* LocalIntakeQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedIntake/LocalIntakeQueue.swift; sourceTree = SOURCE_ROOT; };
+		76BCDFF8C78C4B2FAFC7C4B5 /* LocalCaptureIntelligenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobileTests/LocalCaptureIntelligenceTests.swift; sourceTree = SOURCE_ROOT; };
+		FE6B7B16CFA04F979A12970F /* LocalCaptureIntelligenceSystemProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/LocalCapture/LocalCaptureIntelligenceSystemProvider.swift; sourceTree = SOURCE_ROOT; };
+		BDA089EB15044D1FB70671FC /* LocalCaptureIntelligenceReviewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/LocalCapture/LocalCaptureIntelligenceReviewModel.swift; sourceTree = SOURCE_ROOT; };
+		9E3F963159B4444AB76E434F /* LocalCaptureIntelligenceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/LocalCapture/LocalCaptureIntelligenceViews.swift; sourceTree = SOURCE_ROOT; };
+		7B60CC9E8F124C4B8850F25F /* LocalCaptureIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/LocalCapture/LocalCaptureIntelligence.swift; sourceTree = SOURCE_ROOT; };
+		8D1928D382804D429618A211 /* LocalCaptureBackupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobileTests/LocalCaptureBackupTests.swift; sourceTree = SOURCE_ROOT; };
+		9F87BD8B56AA42B39A9FBCD7 /* LocalCaptureStorageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/LocalCapture/LocalCaptureStorageView.swift; sourceTree = SOURCE_ROOT; };
+		05123AC3723B410BAEB761CD /* LocalCaptureBackup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/LocalCapture/LocalCaptureBackup.swift; sourceTree = SOURCE_ROOT; };
+		C84E292006D64C9F888711B2 /* LocalCaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/LocalCapture/LocalCaptureStore.swift; sourceTree = SOURCE_ROOT; };
+		7FDBC9B5C0094860A6972603 /* LocalCaptureAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/LocalCapture/LocalCaptureAudio.swift; sourceTree = SOURCE_ROOT; };
+		4E3D4D150A624A2AA034C1B4 /* LocalImagePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/LocalCapture/LocalImagePicker.swift; sourceTree = SOURCE_ROOT; };
+		6F4929B629CE4BE19A99F0A0 /* LocalCaptureRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/LocalCapture/LocalCaptureRoot.swift; sourceTree = SOURCE_ROOT; };
+		6B73BD31288B412D9624C7A7 /* LocalCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobileTests/LocalCaptureTests.swift; sourceTree = SOURCE_ROOT; };
+		99646D835BCD438091B1AB5C /* LocalCaptureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobileUITests/LocalCaptureUITests.swift; sourceTree = SOURCE_ROOT; };
+
 		014F7454548D4B275B575E61 /* MockSecureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockSecureStore.swift; sourceTree = "<group>"; };
 		01A310FC7CE4D91514A32147 /* HermesHostServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesHostServiceProtocol.swift; sourceTree = "<group>"; };
 		0220D103178EF414928CFCA7 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
@@ -435,6 +482,16 @@
 		2C0E0892137AA72D9468922E /* HermesMobile */ = {
 			isa = PBXGroup;
 			children = (
+				57CA548DC02860C24B0CABFA /* AdminRoot.swift */,
+				E47615929A594A026F5460B2 /* AdminEditor.swift */,
+				CE61F41C0A39FD9351820878 /* HermesAdminClient.swift */,
+				60C848DCD4554BD7A8DCD2DD /* HermesShareExtension.entitlements */,
+				7A553F84958A4979A3D70213 /* Info.plist */,
+				E9F335828ACD49FD91ACB687 /* LocalIntakeTests.swift */,
+				8EAF6D01E1BD4BB2BB6EA5D5 /* LocalCaptureIntents.swift */,
+				11584A5778B748F89D923F85 /* LocalIntakeImporter.swift */,
+				4649EB4B3D2A476B9258ABE4 /* ShareViewController.swift */,
+				A94BFA5CAA264674A6DA353B /* LocalIntakeQueue.swift */,
 				BC293041526374A1B2C3D4E5 /* CarPlay */,
 				160088ABCC350E17C2160197 /* Components */,
 				D510518ADBCD6B05B96F1913 /* Core */,
@@ -444,6 +501,16 @@
 				935A329D7833E4DC9AFD0FD4 /* Services */,
 				1BE66C0CA0A4C82A44FDF7E9 /* Stores */,
 				E0F3E6FB4FF8FE4136F81A16 /* AppEntry.swift */,
+				C84E292006D64C9F888711B2 /* LocalCaptureStore.swift */,
+				9F87BD8B56AA42B39A9FBCD7 /* LocalCaptureStorageView.swift */,
+				05123AC3723B410BAEB761CD /* LocalCaptureBackup.swift */,
+				7FDBC9B5C0094860A6972603 /* LocalCaptureAudio.swift */,
+				4E3D4D150A624A2AA034C1B4 /* LocalImagePicker.swift */,
+				6F4929B629CE4BE19A99F0A0 /* LocalCaptureRoot.swift */,
+				FE6B7B16CFA04F979A12970F /* LocalCaptureIntelligenceSystemProvider.swift */,
+				BDA089EB15044D1FB70671FC /* LocalCaptureIntelligenceReviewModel.swift */,
+				9E3F963159B4444AB76E434F /* LocalCaptureIntelligenceViews.swift */,
+				7B60CC9E8F124C4B8850F25F /* LocalCaptureIntelligence.swift */,
 				CAAF4F2F210B5160B5268CF6 /* ContentView.swift */,
 				89947254B6F4166F9BFD21E2 /* HermesMobile.entitlements */,
 			);
@@ -545,6 +612,7 @@
 		885E8F8307636D94085EA353 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				C5A548ED18BF4477BB87636A /* HermesShareExtension.appex */,
 				E11909D98B0F5781E0DA91D1 /* HermesMobile.app */,
 				CC94FDD251C876AFDBD6305E /* HermesMobileTests.xctest */,
 				5B190112B3731E98B8EC3A87 /* HermesMobileUITests.xctest */,
@@ -601,6 +669,8 @@
 			isa = PBXGroup;
 			children = (
 				324210CDA9855FA02403D143 /* AppTemplateUITests.swift */,
+				8FC0D8DA927301443BB93DF9 /* AdminLaunchUITests.swift */,
+				99646D835BCD438091B1AB5C /* LocalCaptureUITests.swift */,
 				9B63F95E9AC1893365E6EFD0 /* AppTemplateUITestsLaunchTests.swift */,
 			);
 			path = HermesMobileUITests;
@@ -691,6 +761,10 @@
 			isa = PBXGroup;
 			children = (
 				48A1D2D381EA3919E2D8302A /* AppStoresTests.swift */,
+				7E74AD9E3D25B18482F365BD /* AdminClientTests.swift */,
+				6B73BD31288B412D9624C7A7 /* LocalCaptureTests.swift */,
+				76BCDFF8C78C4B2FAFC7C4B5 /* LocalCaptureIntelligenceTests.swift */,
+				8D1928D382804D429618A211 /* LocalCaptureBackupTests.swift */,
 				913ED4F6E33142A78F4B8FAA /* AppTemplateTests.swift */,
 			);
 			path = HermesMobileTests;
@@ -758,6 +832,7 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		03C4544714FC43D3BF782F13 /* HermesShareExtension */ = {isa = PBXNativeTarget; buildConfigurationList = 96C10168B2AA44BA9C7B3660; buildPhases = (BE462101BFBA4D7D80A5DE0F, ); buildRules = (); dependencies = (); name = HermesShareExtension; productName = HermesShareExtension; productReference = C5A548ED18BF4477BB87636A; productType = "com.apple.product-type.app-extension"; };
 		7B04007FC76BC95C646A4BA8 /* HermesMobileTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 4A8053146615346B324A482D /* Build configuration list for PBXNativeTarget "HermesMobileTests" */;
@@ -805,6 +880,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				E8031CC8F4534CC09C5B6677 /* Share dependency */,
 				F1A2B3C4D5E6F70819203142 /* PBXTargetDependency */,
 			);
 			name = HermesMobile;
@@ -873,6 +949,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				03C4544714FC43D3BF782F13 /* HermesShareExtension */,
 				E084E7061D97A1CB68FAED6E /* HermesMobile */,
 				7B04007FC76BC95C646A4BA8 /* HermesMobileTests */,
 				F974E240959519AA0BE1D74B /* HermesMobileUITests */,
@@ -893,6 +970,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		BE462101BFBA4D7D80A5DE0F /* Share Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (E91D28368CBB494EA57B3511, A9E03077642B45F1813A238A, ); runOnlyForDeploymentPostprocessing = 0; };
 		2814BDA4E73FA86374E1E62D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -913,6 +991,7 @@
 			files = (
 				3FC30370603D7A0C3F087003 /* AdminLaunchUITests.swift in Sources */,
 				C50759AFB789B4D6B6EE5C70 /* AppTemplateUITests.swift in Sources */,
+				8A1BCA61EB7948AD95568C1B /* LocalCaptureUITests.swift in Sources */,
 				4D0ED4A2C2E6E6E5C3DA4932 /* AppTemplateUITestsLaunchTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -921,7 +1000,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ED7483B3B121471DAF1D8FBC /* LocalIntakeTests.swift in Sources */,
 				1C28312C8A9819F31BBB3386 /* AppStoresTests.swift in Sources */,
+				9C8DDB5D6CAD42E3B6C6B93A /* LocalCaptureTests.swift in Sources */,
+				5C07DFC91DD5487BA4942B63 /* LocalCaptureIntelligenceTests.swift in Sources */,
+				8D5BD09E0183429DA81291C5 /* LocalCaptureBackupTests.swift in Sources */,
 				92BA2EF06A1EBB40419CB948 /* AdminClientTests.swift in Sources */,
 				85AD98E44891203305628F5C /* AppTemplateTests.swift in Sources */,
 			);
@@ -931,6 +1014,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1C263E03C808494FA94B68A4 /* LocalCaptureIntents.swift in Sources */,
+				FF35A6B216D4446C8979F009 /* LocalIntakeImporter.swift in Sources */,
+				2EF3023F3C8E4563A135E3D8 /* LocalIntakeQueue.swift in Sources */,
 				3A415263748596A1B2C3D4E5 /* CarPlaySceneDelegate.swift in Sources */,
 				4B526374859607A1B2C3D4E5 /* CarPlayVoiceManager.swift in Sources */,
 				6D748596071829A1B2C3D4E5 /* HermesWidgetData.swift in Sources */,
@@ -940,6 +1026,16 @@
 				389F8536F5172940AD411357 /* AdminEditor.swift in Sources */,
 				852E3063A25EE1864919C69F /* AdminRoot.swift in Sources */,
 				48EA1D2ECF55A452C1F6F592 /* AppEntry.swift in Sources */,
+				8E6EB97783EC479A9F858C87 /* LocalCaptureStore.swift in Sources */,
+				14085F4B0DF74932A51F9A94 /* LocalCaptureStorageView.swift in Sources */,
+				27C44C29018E4B0C964CD0B6 /* LocalCaptureBackup.swift in Sources */,
+				08B274CEE7034AD8BA670712 /* LocalCaptureAudio.swift in Sources */,
+				B5D4067DFE4A46829E039D87 /* LocalImagePicker.swift in Sources */,
+				47205E87653E4672A059D4F4 /* LocalCaptureRoot.swift in Sources */,
+				5537049D63154D399815E317 /* LocalCaptureIntelligenceSystemProvider.swift in Sources */,
+				73A3A46AA6624EA9A2DF4831 /* LocalCaptureIntelligenceReviewModel.swift in Sources */,
+				02D2927D01BB4F388B1EC6A9 /* LocalCaptureIntelligenceViews.swift in Sources */,
+				5AA8E5C8FEAE40BABCC32EBE /* LocalCaptureIntelligence.swift in Sources */,
 				1EA612E6046B341EBC64339F /* AppPersistenceStoreProtocol.swift in Sources */,
 				6A2C91BD3A81E8894274CAB5 /* AppRootView.swift in Sources */,
 				110CAA5251E4E079A22CD2A1 /* AppSessionState.swift in Sources */,
@@ -1079,6 +1175,7 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		E8031CC8F4534CC09C5B6677 /* Share dependency */ = {isa = PBXTargetDependency; target = 03C4544714FC43D3BF782F13; targetProxy = 40609A844AF3466FB197558B; };
 		93E47B18782AC31AC9E91198 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = E084E7061D97A1CB68FAED6E /* HermesMobile */;
@@ -1097,6 +1194,50 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		097D81E58A5A474FB3779E52 /* Release */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                APPLICATION_EXTENSION_API_ONLY = YES;
+                CODE_SIGN_ENTITLEMENTS = HermesShareExtension/HermesShareExtension.entitlements;
+                CODE_SIGN_STYLE = Automatic;
+                DEVELOPMENT_TEAM = "";
+                CURRENT_PROJECT_VERSION = 1;
+                MARKETING_VERSION = 1.0.0;
+                INFOPLIST_FILE = HermesShareExtension/Info.plist;
+                IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+                PRODUCT_BUNDLE_IDENTIFIER = cool.n0thing.hermes.Share;
+                PRODUCT_NAME = HermesShareExtension;
+                SDKROOT = iphoneos;
+                SKIP_INSTALL = YES;
+                SWIFT_VERSION = 6.2;
+                SWIFT_STRICT_CONCURRENCY = complete;
+                TARGETED_DEVICE_FAMILY = "1,2";
+                LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
+            };
+            name = Release;
+        };
+		1FD51D7457EA47F9B2716476 /* Debug */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                APPLICATION_EXTENSION_API_ONLY = YES;
+                CODE_SIGN_ENTITLEMENTS = HermesShareExtension/HermesShareExtension.entitlements;
+                CODE_SIGN_STYLE = Automatic;
+                DEVELOPMENT_TEAM = "";
+                CURRENT_PROJECT_VERSION = 1;
+                MARKETING_VERSION = 1.0.0;
+                INFOPLIST_FILE = HermesShareExtension/Info.plist;
+                IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+                PRODUCT_BUNDLE_IDENTIFIER = cool.n0thing.hermes.Share;
+                PRODUCT_NAME = HermesShareExtension;
+                SDKROOT = iphoneos;
+                SKIP_INSTALL = YES;
+                SWIFT_VERSION = 6.2;
+                SWIFT_STRICT_CONCURRENCY = complete;
+                TARGETED_DEVICE_FAMILY = "1,2";
+                LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", );
+            };
+            name = Debug;
+        };
 		42430EED93C5DA3BA63225AC /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1402,6 +1543,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		96C10168B2AA44BA9C7B3660 /* Share configurations */ = {isa = XCConfigurationList; buildConfigurations = (1FD51D7457EA47F9B2716476, 097D81E58A5A474FB3779E52, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		07A17B63B67E3F17E4F9C113 /* Build configuration list for PBXNativeTarget "HermesMobileWidgets" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -1,6 +1,24 @@
 import Speech
 import SwiftUI
 
+/// Assistance edits a draft only; sending remains a separate explicit action.
+enum ComposerAssistance: String, CaseIterable {
+    case summarize = "Summarize"
+    case nextSteps = "Find next steps"
+
+    func draft(existing: String, hasAttachments: Bool) -> String {
+        let prompt: String
+        switch self {
+        case .summarize:
+            prompt = hasAttachments ? "Summarize the attached material." : "Help me summarize this conversation."
+        case .nextSteps:
+            prompt = hasAttachments ? "Identify next steps from the attached material." : "Help me identify next steps."
+        }
+        return existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? prompt : existing + "\n\n" + prompt
+    }
+}
+
 struct ChatInputBar: View {
     @Binding var text: String
     @Binding var pendingAttachments: [PendingAttachment]
@@ -11,12 +29,12 @@ struct ChatInputBar: View {
     let onAttach: () -> Void
     let onSlashCommand: (SlashCommand, String?) -> Void
 
-    @Environment(TalkStore.self) private var talkStore
-    @Environment(ChatStore.self) private var chatStore
-    @Environment(TabRouter.self) private var router
+    var commandCatalog: [SlashCommand] = SlashCommand.allBuiltIn
+    var allowsDictation = true
 
     @State private var speechService = LiveSpeechService()
     @State private var dictationBaseText = ""
+    @State private var dictationError: String?
 
     private var canSend: Bool {
         let hasText = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -43,7 +61,7 @@ struct ChatInputBar: View {
     private var filteredCommands: [SlashCommand] {
         let query = parsedSlashInput.command.lowercased()
         let argument = parsedSlashInput.argument?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let all = chatStore.commandCatalog.filter(\.showInAutocomplete)
+        let all = commandCatalog.filter(\.showInAutocomplete)
 
         if query.isEmpty {
             return all.filter { $0.suggestedArgument == nil }
@@ -77,6 +95,13 @@ struct ChatInputBar: View {
                     onSlashCommand(command, arg)
                 }
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
+            if let dictationError {
+                Text(dictationError)
+                    .font(Design.Typography.caption)
+                    .foregroundStyle(Design.Colors.secondaryForeground)
+                    .padding(.horizontal, Design.Spacing.md)
             }
 
             // Composer container
@@ -115,11 +140,13 @@ struct ChatInputBar: View {
                         Image(systemName: "plus")
                             .font(.system(size: Design.Size.iconMedium, weight: .medium))
                             .foregroundStyle(Design.Colors.secondaryForeground)
-                            .frame(width: 36, height: 36)
+                            .frame(minWidth: Design.Size.minTapTarget, minHeight: Design.Size.minTapTarget)
                             .background(Design.Colors.surface)
                             .clipShape(Circle())
                     }
                     .accessibilityLabel("Add attachment")
+
+                    assistanceMenu
 
                     Spacer()
 
@@ -128,30 +155,16 @@ struct ChatInputBar: View {
                         Button {
                             toggleDictation()
                         } label: {
-                            Image(systemName: speechService.isListening ? "stop.fill" : "mic")
+                            Label(speechService.isListening ? "Stop" : "Dictate", systemImage: speechService.isListening ? "stop.fill" : "mic")
                                 .font(.system(size: Design.Size.iconMedium, weight: .medium))
                                 .foregroundStyle(speechService.isListening ? .red : Design.Colors.secondaryForeground)
-                                .frame(width: 36, height: 36)
+                                .frame(minWidth: Design.Size.minTapTarget, minHeight: Design.Size.minTapTarget)
                                 .background(speechService.isListening ? Design.Colors.surface : .clear)
-                                .clipShape(Circle())
+                                .clipShape(Capsule())
                         }
-                        .accessibilityLabel(speechService.isListening ? "Stop dictation" : "Start dictation")
-                    }
-
-                    // Talk mode button (right side, before send)
-                    if !isStreaming && !speechService.isListening && !canSend {
-                        Button {
-                            router.isVoiceOverlayPresented = true
-                        } label: {
-                            Image(systemName: "waveform")
-                                .font(.system(size: Design.Size.iconMedium, weight: .medium))
-                                .foregroundStyle(Design.Colors.foreground)
-                                .frame(width: 36, height: 36)
-                                .background(Design.Brand.accent)
-                                .clipShape(Circle())
-                        }
-                        .accessibilityLabel("Start voice mode")
-                        .transition(.scale.combined(with: .opacity))
+                        .accessibilityLabel(speechService.isListening ? "Stop dictation" : "Dictate text")
+                        .accessibilityHint("Adds words to your draft. Review before sending.")
+                        .disabled(!allowsDictation)
                     }
 
                     // Send / Stop button
@@ -177,6 +190,34 @@ struct ChatInputBar: View {
                 dictationBaseText = ""
             }
         }
+    }
+
+    private var assistanceMenu: some View {
+        Menu {
+            Section("Prepare a draft") {
+                ForEach(ComposerAssistance.allCases, id: \.self) { action in
+                    Button(action.rawValue) {
+                        text = action.draft(existing: text, hasAttachments: !pendingAttachments.isEmpty)
+                        isFocused.wrappedValue = true
+                    }
+                }
+            }
+            Section("Voice and notes") {
+                Text("Dictate adds text for review; it does not start a conversation.")
+                Label("Live conversation — unavailable", systemImage: "waveform")
+                Text("Host and input authorization is not connected yet.")
+                Label("Take notes — unavailable here", systemImage: "note.text")
+                Text("Note capture is not connected to this composer.")
+            }
+        } label: {
+            Label("Assist", systemImage: "sparkles")
+                .font(Design.Typography.caption)
+                .foregroundStyle(Design.Colors.secondaryForeground)
+                .frame(minHeight: Design.Size.minTapTarget)
+        }
+        .disabled(isStreaming || speechService.isListening || isSlashMode)
+        .accessibilityIdentifier("chat.assistance")
+        .accessibilityHint("Prepare a draft to review, or check voice and notes availability.")
     }
 
     // MARK: - Attachment Preview Strip
@@ -236,6 +277,7 @@ struct ChatInputBar: View {
                     .foregroundStyle(Design.Colors.foreground)
                     .background(Circle().fill(Design.Colors.background).padding(2))
             }
+            .accessibilityLabel("Remove attachment \(attachment.fileName)")
             .offset(x: 6, y: -6)
         }
     }
@@ -254,17 +296,19 @@ struct ChatInputBar: View {
                 Image(systemName: "stop.fill")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Design.Colors.foreground)
-                    .frame(width: 36, height: 36)
+                    .frame(minWidth: Design.Size.minTapTarget, minHeight: Design.Size.minTapTarget)
                     .background(Design.Colors.surface)
                     .clipShape(Circle())
             }
-            .accessibilityLabel("Stop generating")
+            .accessibilityLabel("Interrupt response")
+            .accessibilityHint("Stops receiving this response. A running remote tool may continue.")
+            .accessibilityIdentifier("chat.interrupt")
         } else if canSend {
             Button(action: handlePrimaryAction) {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Design.Colors.background)
-                    .frame(width: 36, height: 36)
+                    .frame(minWidth: Design.Size.minTapTarget, minHeight: Design.Size.minTapTarget)
                     .background(Design.Brand.accent)
                     .clipShape(Circle())
             }
@@ -276,6 +320,8 @@ struct ChatInputBar: View {
     // MARK: - Dictation
 
     private func toggleDictation() {
+        guard allowsDictation else { return }
+        dictationError = nil
         if speechService.isListening {
             speechService.stopListening()
             text = mergedDictationText(speechService.transcript)
@@ -287,6 +333,7 @@ struct ChatInputBar: View {
                     try await speechService.startListening()
                 } catch {
                     dictationBaseText = ""
+                    dictationError = "Dictation unavailable. You can keep typing. " + error.localizedDescription
                 }
             }
         }
@@ -310,3 +357,52 @@ struct ChatInputBar: View {
         return "\(base) \(trimmedTranscript)"
     }
 }
+
+/// Component-only preview: no container, persistence, host, sensors or transport.
+/// The existing mock container still constructs live sensors, so do not use it here.
+struct ChatComposerLab: View {
+    @State private var text = ""
+    @State private var attachments: [PendingAttachment] = []
+    @State private var isStreaming = false
+    @State private var notice = "Sample activity only. Nothing is sent or recorded."
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Design.Spacing.md) {
+            Text("Hermes · Component preview")
+                .font(Design.Typography.headline)
+            Text("Experimental composer lab. Temporary drafts are discarded when you leave. Connected chat, dictation, attachments and approvals are not available here.")
+                .font(Design.Typography.footnote)
+            Text(notice)
+                .font(Design.Typography.caption)
+            Toggle("Preview a response in progress", isOn: $isStreaming)
+            ToolActivityRail(
+                activities: [ToolActivity(label: "web_search", isActive: true)],
+                isStreaming: isStreaming
+            )
+            Spacer()
+            ChatInputBar(
+                text: $text,
+                pendingAttachments: $attachments,
+                isStreaming: isStreaming,
+                isFocused: $focused,
+                onSend: { notice = "Preview only — draft was not sent." },
+                onStop: { isStreaming = false },
+                onAttach: { notice = "Attachment picker unavailable in this preview." },
+                onSlashCommand: { _, _ in notice = "Commands unavailable in this preview." },
+                commandCatalog: [],
+                allowsDictation: false
+            )
+        }
+        .padding(.top, Design.Spacing.md)
+        .foregroundStyle(Design.Colors.foreground)
+        .background(Design.Colors.background)
+        .navigationTitle("Chat composer lab")
+    }
+}
+
+#if DEBUG
+#Preview("Base UI polish — no network or recording") {
+    ChatComposerLab()
+}
+#endif

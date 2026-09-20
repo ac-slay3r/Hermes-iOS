@@ -33,7 +33,7 @@ struct ToolActivityRail: View {
                 .tint(Design.Colors.secondaryForeground)
 
             if let latest = latestActivity {
-                Text(latest.label)
+                Text("\(latest.displayLabel) · \(latest.displayStatus(isStreaming: true))")
                     .font(Design.Typography.caption)
                     .foregroundStyle(Design.Colors.secondaryForeground)
                     .lineLimit(1)
@@ -56,21 +56,20 @@ struct ToolActivityRail: View {
     private var finishedSummary: some View {
         VStack(alignment: .leading, spacing: Design.Spacing.xxs) {
             Button {
-                guard activities.count > 1 else { return }
                 withAnimation(Design.Motion.quickResponse) {
                     isExpanded.toggle()
                 }
             } label: {
                 HStack(spacing: Design.Spacing.xs) {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image(systemName: "list.bullet")
                         .font(.system(size: 10))
                         .foregroundStyle(Design.Colors.secondaryForeground)
 
-                    Text("Used \(activities.count) tool\(activities.count == 1 ? "" : "s")")
+                    Text("\(activities.count) tool activit\(activities.count == 1 ? "y" : "ies")")
                         .font(Design.Typography.caption)
                         .foregroundStyle(Design.Colors.secondaryForeground)
 
-                    if activities.count > 1 {
+                    if !activities.isEmpty {
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                             .font(.system(size: 8, weight: .semibold))
                             .foregroundStyle(Design.Colors.secondaryForeground)
@@ -82,6 +81,8 @@ struct ToolActivityRail: View {
                 .clipShape(Capsule())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(isExpanded ? "Hide tool activity details" : "Show tool activity details")
+            .accessibilityValue("\(activities.count) activities, \(isExpanded ? "expanded" : "collapsed")")
 
             if isExpanded {
                 expandedTimeline
@@ -89,8 +90,7 @@ struct ToolActivityRail: View {
             }
         }
         .animation(Design.Motion.quickResponse, value: isExpanded)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Tools: \(activities.map(\.label).joined(separator: ", "))")
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Expanded Timeline
@@ -103,12 +103,13 @@ struct ToolActivityRail: View {
                         .fill(Design.Colors.secondaryForeground)
                         .frame(width: 5, height: 5)
 
-                    Text(activity.label)
+                    Text("\(activity.displayLabel) · \(activity.displayStatus(isStreaming: isStreaming))")
                         .font(Design.Typography.caption)
                         .foregroundStyle(Design.Colors.secondaryForeground)
                         .lineLimit(1)
 
                     Spacer()
+                        .accessibilityHidden(true)
 
                     Text(activity.startedAt, style: .time)
                         .font(Design.Typography.caption2)

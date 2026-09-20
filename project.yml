@@ -61,6 +61,7 @@ targets:
         com.apple.security.application-groups:
           - group.cool.n0thing.hermes
     sources:
+      - path: SharedIntake
       - path: HermesMobile
         excludes:
           - "**/.DS_Store"
@@ -70,6 +71,7 @@ targets:
     dependencies:
       - package: WebRTC
       - target: HermesMobileWidgets
+      - target: HermesShareExtension
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cool.n0thing.hermes
@@ -104,10 +106,10 @@ targets:
         NSHealthUpdateUsageDescription: "Hermes does not write health data, but this permission is required by the system."
         NSCameraUsageDescription: "Hermes uses the camera to capture photos and documents for analysis."
         NSPhotoLibraryUsageDescription: "Hermes accesses your photo library to help organize and search your photos."
-        NSMicrophoneUsageDescription: "Hermes uses the microphone for voice conversations in Talk Mode."
+        NSMicrophoneUsageDescription: "Hermes records voice captures on this device. Recordings are not uploaded."
         NSLocationAlwaysAndWhenInUseUsageDescription: "Hermes uses your location in the background to provide contextual awareness and proactive suggestions."
         NSMotionUsageDescription: "Hermes uses motion data to understand your current activity for contextual awareness."
-        NSSpeechRecognitionUsageDescription: "Hermes uses speech recognition for voice commands and local transcription."
+        NSSpeechRecognitionUsageDescription: "Hermes transcribes recordings on this device only, when offline recognition is supported."
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
         UIBackgroundModes: []
@@ -143,6 +145,34 @@ targets:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: Apple Distribution
           PROVISIONING_PROFILE_SPECIFIER: cool.n0thing.hermes
+
+  HermesShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: SharedIntake
+      - path: HermesShareExtension
+        excludes:
+          - Info.plist
+          - HermesShareExtension.entitlements
+    info:
+      path: HermesShareExtension/Info.plist
+    entitlements:
+      path: HermesShareExtension/HermesShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.cool.n0thing.hermes
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cool.n0thing.hermes.Share
+        PRODUCT_NAME: HermesShareExtension
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        APPLICATION_EXTENSION_API_ONLY: true
+        SKIP_INSTALL: true
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_ENTITLEMENTS: HermesShareExtension/HermesShareExtension.entitlements
 
   HermesMobileTests:
     type: bundle.unit-test

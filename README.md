@@ -4,6 +4,16 @@
 > [!NOTE]
 > Hermes iOS is an independent community project. It is not affiliated with, endorsed by, or part of [Nous Research](https://nousresearch.com/) or the official [Hermes Agent](https://github.com/NousResearch/hermes-agent) project.
 
+> **This branch launches administration first, with optional local supporting tools.**
+> Open **Supporting tools → Local workspace** for capture, organization, AI review,
+> intake and Files backup; **Chat composer lab** exposes the safe draft/tool preview.
+> No automatic capture/upload or legacy remote connection is restored. Administration
+> remains disconnected and locked. Native and distribution readiness are separate gates;
+> Share-extension signing is not configured. See the authoritative
+> [current integration and reachability matrix](docs/CURRENT_BUILD_INTEGRATION.md).
+> The companion/relay/connector descriptions below document the retained legacy product,
+> **not enabled functionality in this branch**.
+
 Hermes iOS is a self-hosted-first iPhone companion for a user-owned Hermes runtime. It adds a native iOS app, a public relay, and a host-side connector so Hermes can move between desktop, phone, sensors, widgets, and voice without turning your runtime into a hosted service.
 
 <img width="3168" height="1344" alt="Gemini_Generated_Image_nsyz1ynsyz1ynsyz" src="https://github.com/user-attachments/assets/4ff03aec-e2d8-4174-a194-5aa2839a1f1f" />

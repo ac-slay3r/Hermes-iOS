@@ -6,6 +6,15 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AdminSourceTests(unittest.TestCase):
+    def test_secondary_local_tools_are_reachable_without_unlocking_admin(self):
+        text = (ROOT / "HermesMobile/Administration/AdminRoot.swift").read_text()
+        for token in ['Section("Supporting tools")', 'admin.localWorkspace',
+                      'LocalCaptureRoot()', 'ChatComposerLab()', '.fullScreenCover',
+                      'inboxRoute.requestID', 'onAppear']:
+            self.assertIn(token, text)
+        self.assertIn('Not connected', text)
+        self.assertNotIn('AppContainer(', text)
+
     def test_admin_entry_does_not_start_capture_or_remote_container(self):
         text = (ROOT / "HermesMobile/AppEntry.swift").read_text()
         self.assertIn("AdminRoot()", text)

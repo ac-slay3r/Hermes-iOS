@@ -11,6 +11,16 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_native_ci_conserves_minutes_without_bypassing_gates(self):
+        text = (ROOT / ".github/workflows/ios-ci.yml").read_text()
+        build = text.split("  native-build:\n", 1)[1].split("  native-tests:\n", 1)[0]
+        tests = text.split("  native-tests:\n", 1)[1].split("  relay-tests:\n", 1)[0]
+        self.assertIn("    needs: native-build\n", tests)
+        self.assertIn("timeout-minutes: 20", build)
+        self.assertIn("timeout-minutes: 35", tests)
+        self.assertNotIn("continue-on-error", build + tests)
+        self.assertNotIn("-skip-testing", build + tests)
+
     def test_signing_job_depends_on_separate_read_only_gate(self):
         text = (ROOT / ".github/workflows/testflight.yml").read_text()
         gate = text.split("  release-gate:\n", 1)[-1].split("  archive-and-upload:\n", 1)[0]

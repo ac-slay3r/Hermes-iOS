@@ -33,7 +33,7 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "49C588C19E13F6F3E4B7B5C2"
+               BlueprintIdentifier = "7B04007FC76BC95C646A4BA8"
                BuildableName = "HermesMobileTests.xctest"
                BlueprintName = "HermesMobileTests"
                ReferencedContainer = "container:HermesMobile.xcodeproj">

@@ -1,5 +1,27 @@
 import Testing
+import XCTest
 @testable import HermesMobile
+
+final class BaseUIPolishTests: XCTestCase {
+    func testAssistanceKeepsDraftAndDoesNotInventAttachedContent() {
+        XCTAssertEqual(ComposerAssistance.summarize.draft(existing: "", hasAttachments: true),
+                       "Summarize the attached material.")
+        XCTAssertEqual(ComposerAssistance.nextSteps.draft(existing: "My draft", hasAttachments: false),
+                       "My draft\n\nHelp me identify next steps.")
+        XCTAssertEqual(ComposerAssistance.summarize.draft(existing: "  ", hasAttachments: false),
+                       "Help me summarize this conversation.")
+    }
+
+    func testToolStatusDoesNotClaimSuccessWhenStreamStops() {
+        let active = ToolActivity(label: "web_search")
+        XCTAssertEqual(active.displayStatus(isStreaming: true), "Working")
+        XCTAssertEqual(active.displayStatus(isStreaming: false), "No longer updating")
+        XCTAssertEqual(ToolActivity(label: "custom_tool", isActive: false)
+            .displayStatus(isStreaming: false), "Activity ended")
+        XCTAssertEqual(active.displayLabel, "Search the web")
+        XCTAssertEqual(ToolActivity(label: "custom_tool").displayLabel, "custom tool")
+    }
+}
 
 struct HermesMobileTests {
 

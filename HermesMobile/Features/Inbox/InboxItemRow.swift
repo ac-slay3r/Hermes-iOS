@@ -25,6 +25,7 @@ struct InboxItemRow: View {
         .clipShape(RoundedRectangle(cornerRadius: Design.CornerRadius.lg))
         .opacity(item.isRead ? 0.7 : 1.0)
         .onTapGesture(perform: onOpenDetails)
+        .accessibilityAction(named: Text(item.type == .approval ? "Review details before approving" : "Open details"), onOpenDetails)
     }
 
     // MARK: - Header
@@ -79,6 +80,7 @@ struct InboxItemRow: View {
             .background(Design.Brand.accent)
             .clipShape(Capsule())
             .accessibilityLabel("\(item.primaryAction?.title ?? defaultPrimaryActionTitle) \(item.title)")
+            .accessibilityHint(item.type == .approval ? "Applies to this request only, not future actions." : "Opens this item.")
 
             Button {
                 onSecondaryAction()
@@ -91,7 +93,7 @@ struct InboxItemRow: View {
             }
             .background(Design.Colors.surface)
             .clipShape(Capsule())
-            .accessibilityLabel("Dismiss \(item.title)")
+            .accessibilityLabel("\(item.secondaryAction?.title ?? "Dismiss") \(item.title)")
         }
     }
 

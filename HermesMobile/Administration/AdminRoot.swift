@@ -11,6 +11,9 @@ struct AdminRoot: View {
     @State private var profile = "default"
     @State private var target: AdminTarget?
     @State private var invalidTarget = false
+    @State private var localWorkspacePresented = false
+    @State private var inboxRoute = LocalInboxRoute.shared
+    @State private var handledInboxRequest = 0
 
     var body: some View {
         NavigationStack {
@@ -63,6 +66,16 @@ struct AdminRoot: View {
                     Text("Editors are implemented but locked until an approved iOS sign-in is verified. The existing native broker accepts only HTTP loopback callbacks; this build does not bypass that restriction or ask for copied tokens.")
                         .font(Design.Typography.footnote)
                 }
+                Section("Supporting tools") {
+                    Button("Local workspace", systemImage: "tray.full") {
+                        localWorkspacePresented = true
+                    }
+                    .accessibilityIdentifier("admin.localWorkspace")
+                    Text("Optional notes, photos, scans, voice, checklists and Files backup. On-device tools do not grant administration access or send captures to a host.")
+                        .font(Design.Typography.footnote)
+                    NavigationLink("Chat composer lab") { ChatComposerLab() }
+                        .accessibilityIdentifier("admin.composerLab")
+                }
             }
             .scrollContentBackground(.hidden)
             .background(Design.Colors.background)
@@ -73,6 +86,19 @@ struct AdminRoot: View {
             .onChange(of: profile) { _, _ in target = nil }
         }
         .preferredColorScheme(.dark)
+        .fullScreenCover(isPresented: $localWorkspacePresented) {
+            LocalCaptureRoot()
+                .preferredColorScheme(.dark)
+                .tint(Design.Brand.accent)
+        }
+        .onAppear { routeInboxRequest() }
+        .onChange(of: inboxRoute.requestID) { _, _ in routeInboxRequest() }
+    }
+
+    private func routeInboxRequest() {
+        guard inboxRoute.requestID != handledInboxRequest else { return }
+        handledInboxRequest = inboxRoute.requestID
+        localWorkspacePresented = true
     }
 }
 

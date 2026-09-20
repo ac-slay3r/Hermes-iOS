@@ -37,7 +37,8 @@ struct ChatScreen: View {
                     onSend: sendMessage,
                     onStop: { chatStore.cancelStreaming() },
                     onAttach: { showAttachmentPicker = true },
-                    onSlashCommand: handleSlashCommand
+                    onSlashCommand: handleSlashCommand,
+                    commandCatalog: chatStore.commandCatalog
                 )
             }
         }

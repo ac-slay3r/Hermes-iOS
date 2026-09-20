@@ -2,6 +2,38 @@ import XCTest
 
 final class AdminLaunchUITests: XCTestCase {
     @MainActor
+    func testSupportingWorkspaceReturnsToLockedAdministration() {
+        let app = XCUIApplication()
+        app.launch()
+        app.swipeUp()
+        let workspace = app.buttons["admin.localWorkspace"]
+        XCTAssertTrue(workspace.waitForExistence(timeout: 5))
+        workspace.tap()
+        XCTAssertTrue(app.navigationBars["Local captures"].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+        XCTAssertTrue(workspace.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Apply change"].exists)
+    }
+
+    @MainActor
+    func testComposerLabCannotDictateOrSend() {
+        let app = XCUIApplication()
+        app.launch()
+        app.swipeUp()
+        let lab = app.buttons["admin.composerLab"]
+        XCTAssertTrue(lab.waitForExistence(timeout: 5))
+        lab.tap()
+        let composer = app.descendants(matching: .any).matching(identifier: "chat.composer").firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Dictate text"].isEnabled)
+        composer.tap()
+        composer.typeText("Local sample draft")
+        app.buttons["Send message"].tap()
+        XCTAssertTrue(app.staticTexts["Preview only — draft was not sent."].exists)
+        XCTAssertEqual(composer.value as? String, "Local sample draft")
+    }
+
+    @MainActor
     func testNormalLaunchIsDisconnectedAdministration() {
         let app = XCUIApplication()
         app.launch()
