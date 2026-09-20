@@ -2,6 +2,11 @@ name: TestFlight
 
 on:
   workflow_dispatch:
+    inputs:
+      build_number:
+        description: Optional existing build number to inspect without signing
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -20,7 +25,7 @@ env:
 jobs:
   bootstrap-share-profile:
     name: Bootstrap Share signing profile
-    if: github.ref_type == 'branch' && github.ref_name == 'signing/share-profile'
+    if: github.ref_type == 'branch' && github.ref_name == 'signing/share-profile' && inputs.build_number == ''
     runs-on: macos-26
     timeout-minutes: 15
     env:
@@ -188,6 +193,61 @@ jobs:
           rm -f "$RUNNER_TEMP/AuthKey_${APPSTORE_KEY_ID}.p8"
           rm -f "$RUNNER_TEMP/expected-share-cert.sha256"
           rm -rf "$TMPDIR"
+
+  check-uploaded-build:
+    name: Check uploaded TestFlight build
+    if: github.ref_type == 'branch' && github.ref_name == 'signing/share-profile' && inputs.build_number != ''
+    runs-on: macos-26
+    timeout-minutes: 5
+    env:
+      APPSTORE_KEY_ID: 6KJFT6L8N9
+      APPSTORE_ISSUER_ID: 3166b9e4-8fd3-4e9c-b3be-036cb14a4d05
+      BUILD_NUMBER: ${{ inputs.build_number }}
+    steps:
+      - name: Query exact build state
+        shell: bash
+        env:
+          APPSTORE_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          KEY_FILE="$RUNNER_TEMP/AuthKey_${APPSTORE_KEY_ID}.p8"
+          trap 'rm -f "$KEY_FILE"' EXIT
+          umask 077
+          printf '%s' "$APPSTORE_PRIVATE_KEY" > "$KEY_FILE"
+          make_token() {
+            KEY_FILE="$KEY_FILE" KEY_ID="$APPSTORE_KEY_ID" ISSUER_ID="$APPSTORE_ISSUER_ID" python3 - <<'PY'
+          import base64, json, os, subprocess, time
+          def enc(data):
+              return base64.urlsafe_b64encode(data).rstrip(b'=').decode('ascii')
+          header = enc(json.dumps({'alg':'ES256','kid':os.environ['KEY_ID'],'typ':'JWT'}, separators=(',',':')).encode())
+          now = int(time.time())
+          payload = enc(json.dumps({'iss':os.environ['ISSUER_ID'],'iat':now,'exp':now+300,'aud':'appstoreconnect-v1'}, separators=(',',':')).encode())
+          signing = f'{header}.{payload}'
+          der = subprocess.check_output(['openssl','dgst','-sha256','-sign',os.environ['KEY_FILE']], input=signing.encode())
+          index = 2 + (der[1] & 0x7f if der[1] & 0x80 else 0)
+          rlen = der[index + 1]; r = der[index + 2:index + 2 + rlen]; index += 2 + rlen
+          slen = der[index + 1]; s = der[index + 2:index + 2 + slen]
+          raw = r.lstrip(b'\0').rjust(32,b'\0')[-32:] + s.lstrip(b'\0').rjust(32,b'\0')[-32:]
+          print(f'{signing}.{enc(raw)}')
+          PY
+          }
+          ASC_JWT=$(make_token)
+          APP_ID=$(curl --fail --silent --show-error --globoff -H "Authorization: Bearer ${ASC_JWT}" \
+            'https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=cool.n0thing.hermes&limit=1' \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; assert len(d)==1; print(d[0]["id"])')
+          ASC_JWT=$(make_token)
+          BUILD_JSON=$(curl --fail --silent --show-error --globoff -H "Authorization: Bearer ${ASC_JWT}" \
+            "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&filter[version]=$BUILD_NUMBER&fields[builds]=version,processingState,expired,minOsVersion&limit=1")
+          BUILD_ID=$(printf '%s' "$BUILD_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; assert len(d)==1; print(d[0]["id"])')
+          printf '%s' "$BUILD_JSON" | python3 -c 'import json,sys; a=json.load(sys.stdin)["data"][0]["attributes"]; print("build="+a["version"]); print("processingState="+a["processingState"]); print("expired="+str(a["expired"]).lower()); print("minOsVersion="+a["minOsVersion"])'
+          ASC_JWT=$(make_token)
+          DETAIL=$(curl --fail --silent --show-error --globoff -H "Authorization: Bearer ${ASC_JWT}" \
+            "https://api.appstoreconnect.apple.com/v1/builds/$BUILD_ID/buildBetaDetail")
+          printf '%s' "$DETAIL" | python3 -c 'import json,sys; a=json.load(sys.stdin)["data"]["attributes"]; print("internalBuildState="+a["internalBuildState"]); print("externalBuildState="+a["externalBuildState"])'
+          ASC_JWT=$(make_token)
+          GROUPS=$(curl --fail --silent --show-error --globoff -H "Authorization: Bearer ${ASC_JWT}" \
+            "https://api.appstoreconnect.apple.com/v1/builds/$BUILD_ID/betaGroups?fields[betaGroups]=name,isInternalGroup&limit=50")
+          printf '%s' "$GROUPS" | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; print("betaGroups="+json.dumps([x["attributes"] for x in d],sort_keys=True))'
 
   release-gate:
     name: Require successful iOS CI for release SHA
