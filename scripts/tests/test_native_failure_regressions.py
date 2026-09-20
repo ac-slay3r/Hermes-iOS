@@ -5,6 +5,13 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 class NativeFailureRegressions(unittest.TestCase):
+    def test_frozen_local_capture_ui_suite_is_skipped_at_setup(self):
+        source = (ROOT / 'HermesMobileUITests/LocalCaptureUITests.swift').read_text()
+        self.assertIn(
+            'throw XCTSkip("Local capture product is frozen; AdminLaunchUITests verifies the dashboard-management entry point.")',
+            source,
+        )
+
     def test_simulator_checks_effective_backup_boundary_without_claiming_file_protection(self):
         store_tests = (ROOT / 'HermesMobileTests/LocalCaptureTests.swift').read_text()
         backup_tests = (ROOT / 'HermesMobileTests/LocalCaptureBackupTests.swift').read_text()

@@ -3,6 +3,7 @@ import XCTest
 final class LocalCaptureUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
+        throw XCTSkip("Local capture product is frozen; AdminLaunchUITests verifies the dashboard-management entry point.")
     }
 
     @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication,
