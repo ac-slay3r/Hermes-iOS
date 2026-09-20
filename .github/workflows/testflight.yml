@@ -258,7 +258,7 @@ jobs:
             DETAIL=$(curl --fail --silent --show-error --globoff -H "Authorization: Bearer ${ASC_JWT}" \
               "https://api.appstoreconnect.apple.com/v1/builds/$BUILD_ID/buildBetaDetail")
           fi
-          printf '%s' "$DETAIL" | python3 -c 'import json,sys; a=json.load(sys.stdin)["data"]["attributes"]; print("internalBuildState="+a["internalBuildState"]); print("externalBuildState="+a["externalBuildState"]); assert a["internalBuildState"] == "READY_TO_TEST"'
+          printf '%s' "$DETAIL" | python3 -c 'import json,sys; a=json.load(sys.stdin)["data"]["attributes"]; print("internalBuildState="+a["internalBuildState"]); print("externalBuildState="+a["externalBuildState"]); assert a["internalBuildState"] == "READY_FOR_BETA_TESTING"'
 
   release-gate:
     name: Require successful iOS CI for release SHA
