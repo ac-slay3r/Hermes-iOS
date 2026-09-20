@@ -568,7 +568,7 @@ final class AppContainer {
     }
 
     private func registerStoredPushTokenIfNeeded(generation: UInt64? = nil) async {
-        guard let storedToken else {
+        guard let storedToken = storedPushToken else {
             return
         }
         let resolvedGeneration = generation ?? beginPushOperation()

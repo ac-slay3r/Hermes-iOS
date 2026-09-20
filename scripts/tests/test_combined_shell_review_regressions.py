@@ -60,6 +60,7 @@ class CombinedShellReviewRegressionTests(unittest.TestCase):
         self.assertIn("await deactivatePushRegistration", disabled_branch)
         self.assertIn("reconcilePushRegistrationIfNeeded", disabled_branch)
         self.assertIn("stale", text.lower())
+        self.assertIn("guard let storedToken = storedPushToken else", text)
 
     def test_remote_revocation_is_fail_closed_with_bounded_retry_and_visible_error(self):
         session = source("HermesMobile/Stores/AppSessionStore.swift")
