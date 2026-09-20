@@ -278,8 +278,8 @@ struct UserSettings: Codable, Hashable, Sendable {
         userName = try container.decodeIfPresent(String.self, forKey: .userName) ?? "User"
         avatarInitials = try container.decodeIfPresent(String.self, forKey: .avatarInitials) ?? "U"
         notificationConsentEstablished = try container.decodeIfPresent(Bool.self, forKey: .notificationConsentEstablished) ?? false
-        notificationsEnabled = notificationConsentEstablished
-            && (try container.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? false)
+        let decodedNotificationsEnabled = try container.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? false
+        notificationsEnabled = notificationConsentEstablished && decodedNotificationsEnabled
         hapticFeedbackEnabled = try container.decodeIfPresent(Bool.self, forKey: .hapticFeedbackEnabled) ?? true
         environment = try container.decodeIfPresent(AppEnvironment.self, forKey: .environment) ?? AppEnvironmentPolicy.currentBuild.defaultEnvironment
         relayConfiguration = try container.decodeIfPresent(RelayConfiguration.self, forKey: .relayConfiguration)

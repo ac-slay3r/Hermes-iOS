@@ -60,7 +60,7 @@ The general dashboard configuration response is not a proven secret-safe project
 - Swift XCTest/UI test source: added for dashboard hierarchy, request ordering/decoding, exact target binding, and `401` fail-closed behavior.
 - Dashboard authentication and overview SHA `a3e96c8e8f61ae26cd3ff1e67675d82950fc3f24`: simulator build, native XCTest/UI tests, relay tests, and connector tests passed in exact-SHA GitHub Actions run `35535969214`; TestFlight build 22 is valid and ready for internal testing.
 - Live dashboard authentication and overview: verified by the owner from TestFlight build 22 against `https://dashboard.n0thing.cool`.
-- Combined Dashboard/Chat/Device source: 100 source/project checks, 70 relay tests, and 88 connector tests pass locally; native compilation, restored companion UI tests, pairing/chat device behavior, and signed delivery remain pending for this uncommitted slice.
+- Combined Dashboard/Chat/Device source: 101 source/project checks, 70 relay tests, and 88 connector tests pass locally; native compilation, restored companion UI tests, pairing/chat device behavior, and signed delivery remain pending for this uncommitted slice.
 - Native dashboard write/readback: not run and not authorized by this scope decision.
 
 ## Signing and retained targets

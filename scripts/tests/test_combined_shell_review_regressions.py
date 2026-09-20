@@ -14,6 +14,12 @@ def source(path: str) -> str:
 
 
 class CombinedShellReviewRegressionTests(unittest.TestCase):
+    def test_throwing_decode_is_not_nested_in_boolean_operator(self):
+        settings = source("HermesMobile/Models/UserSettings.swift")
+        self.assertIn("let decodedNotificationsEnabled = try container.decodeIfPresent", settings)
+        self.assertIn("notificationConsentEstablished && decodedNotificationsEnabled", settings)
+        self.assertNotIn("&& (try container.decodeIfPresent", settings)
+
     def test_sensor_drain_is_generation_bound_and_stop_does_not_unlock_stale_work(self):
         text = source("HermesMobile/Services/Live/SensorUploadService.swift")
         self.assertIn("private var drainGeneration", text)
