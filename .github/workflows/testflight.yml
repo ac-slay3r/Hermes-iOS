@@ -292,7 +292,7 @@ jobs:
           for _ in $(seq 1 30); do
             ASC_JWT=$(make_token)
             FOUND=$(curl --fail --silent --show-error --globoff \
-              -H "Authorization: Bearer ${ASC_JWT}" \
+              -H "Authorization: Bearer ***" \
               "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&filter[version]=$GITHUB_RUN_NUMBER&limit=1" \
               | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["data"]))')
             if test "$FOUND" = 1; then
@@ -303,6 +303,72 @@ jobs:
           done
           echo "Uploaded build $GITHUB_RUN_NUMBER did not appear within 15 minutes." >&2
           exit 1
+
+      - name: Declare export compliance so the build reaches testers
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Hermes iOS only uses standard HTTPS/TLS to talk to the paired relay;
+          # it has no custom/proprietary encryption, so it qualifies for the
+          # standard export exemption. Apple withholds any build from
+          # TestFlight (internalBuildState/externalBuildState stay
+          # MISSING_EXPORT_COMPLIANCE) until this declaration is set on the
+          # build resource. Set it once, right after upload, and read back
+          # buildBetaDetail to prove the block cleared.
+          KEY_FILE="$HOME/.appstoreconnect/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
+          make_token() {
+            KEY_FILE="$KEY_FILE" KEY_ID="$APPSTORE_KEY_ID" ISSUER_ID="$APPSTORE_ISSUER_ID" python3 - <<'PY'
+          import base64, json, os, subprocess, time
+          def enc(data):
+              return base64.urlsafe_b64encode(data).rstrip(b'=').decode('ascii')
+          header = enc(json.dumps({'alg':'ES256','kid':os.environ['KEY_ID'],'typ':'JWT'}, separators=(',',':')).encode())
+          now = int(time.time())
+          payload = enc(json.dumps({'iss':os.environ['ISSUER_ID'],'iat':now,'exp':now+720,'aud':'appstoreconnect-v1'}, separators=(',',':')).encode())
+          signing = f'{header}.{payload}'
+          der = subprocess.check_output(['openssl','dgst','-sha256','-sign',os.environ['KEY_FILE']], input=signing.encode())
+          index = 2 + (der[1] & 0x7f if der[1] & 0x80 else 0)
+          rlen = der[index + 1]; r = der[index + 2:index + 2 + rlen]; index += 2 + rlen
+          slen = der[index + 1]; s = der[index + 2:index + 2 + slen]
+          raw = r.lstrip(b'\0').rjust(32,b'\0')[-32:] + s.lstrip(b'\0').rjust(32,b'\0')[-32:]
+          print(f'{signing}.{enc(raw)}')
+          PY
+          }
+          ASC_JWT=$(make_token)
+          APP_ID=$(curl --fail --silent --show-error --globoff \
+            -H "Authorization: Bearer ***" \
+            'https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=cool.n0thing.hermes&limit=1' \
+            | python3 -c 'import json,sys; data=json.load(sys.stdin)["data"]; assert len(data)==1; print(data[0]["id"])')
+          ASC_JWT=$(make_token)
+          BUILD_ID=$(curl --fail --silent --show-error --globoff \
+            -H "Authorization: Bearer ***" \
+            "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&filter[version]=$GITHUB_RUN_NUMBER&limit=1" \
+            | python3 -c 'import json,sys; data=json.load(sys.stdin)["data"]; assert len(data)==1; print(data[0]["id"])')
+          ASC_JWT=$(make_token)
+          curl --fail --silent --show-error --globoff \
+            -X PATCH \
+            -H "Authorization: Bearer ***" \
+            -H "Content-Type: application/json" \
+            -d '{"data":{"type":"builds","id":"'"$BUILD_ID"'","attributes":{"usesNonExemptEncryption":false}}}' \
+            "https://api.appstoreconnect.apple.com/v1/builds/$BUILD_ID" \
+            -o /dev/null
+          ASC_JWT=$(make_token)
+          curl --fail --silent --show-error --globoff \
+            -H "Authorization: Bearer ***" \
+            "https://api.appstoreconnect.apple.com/v1/builds/$BUILD_ID?include=buildBetaDetail" \
+            -o /tmp/build-readback.json
+          python3 - <<'PY'
+          import json
+          d = json.load(open("/tmp/build-readback.json"))
+          encryption = d["data"]["attributes"]["usesNonExemptEncryption"]
+          included = d.get("included") or []
+          state = included[0]["attributes"] if included else {}
+          print("usesNonExemptEncryption:", encryption)
+          print("internalBuildState:", state.get("internalBuildState"))
+          print("externalBuildState:", state.get("externalBuildState"))
+          assert encryption is False, "export-compliance declaration did not persist"
+          assert state.get("internalBuildState") != "MISSING_EXPORT_COMPLIANCE", "build is still withheld from testers"
+          PY
+
 
       - name: Preserve export diagnostics
         if: always()
