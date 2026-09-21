@@ -1,0 +1,72 @@
+name: Check TestFlight Build Status
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_version:
+        description: "CFBundleVersion (build number) to inspect"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Query App Store Connect build state
+    runs-on: ubuntu-latest
+    env:
+      APPSTORE_KEY_ID: ${{ vars.APPSTORE_KEY_ID }}
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      BUILD_VERSION: ${{ inputs.build_version }}
+    steps:
+      - name: Install App Store Connect API key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          umask 077
+          printf '%s' "${{ secrets.APPSTORE_PRIVATE_KEY }}" > "$HOME/.appstoreconnect/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
+
+      - name: Query build and buildBetaDetail
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY_FILE="$HOME/.appstoreconnect/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
+          make_token() {
+            KEY_FILE="$KEY_FILE" KEY_ID="$APPSTORE_KEY_ID" ISSUER_ID="$APPSTORE_ISSUER_ID" python3 - <<'PY'
+          import base64, json, os, subprocess, time
+          def enc(data):
+              return base64.urlsafe_b64encode(data).rstrip(b'=').decode('ascii')
+          header = enc(json.dumps({'alg':'ES256','kid':os.environ['KEY_ID'],'typ':'JWT'}, separators=(',',':')).encode())
+          now = int(time.time())
+          payload = enc(json.dumps({'iss':os.environ['ISSUER_ID'],'iat':now,'exp':now+720,'aud':'appstoreconnect-v1'}, separators=(',',':')).encode())
+          signing = f'{header}.{payload}'
+          der = subprocess.check_output(['openssl','dgst','-sha256','-sign',os.environ['KEY_FILE']], input=signing.encode())
+          index = 2 + (der[1] & 0x7f if der[1] & 0x80 else 0)
+          rlen = der[index + 1]; r = der[index + 2:index + 2 + rlen]; index += 2 + rlen
+          slen = der[index + 1]; s = der[index + 2:index + 2 + slen]
+          raw = r.lstrip(b'\0').rjust(32,b'\0')[-32:] + s.lstrip(b'\0').rjust(32,b'\0')[-32:]
+          print(f'{signing}.{enc(raw)}')
+          PY
+          }
+          ASC_JWT=$(make_token)
+          APP_ID=$(curl --fail --silent --show-error --globoff \
+            -H "Authorization: Bearer $ASC_JWT" \
+            'https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=cool.n0thing.hermes&limit=1' \
+            | python3 -c 'import json,sys; data=json.load(sys.stdin)["data"]; assert len(data)==1; print(data[0]["id"])')
+          echo "App ID: $APP_ID"
+          ASC_JWT=$(make_token)
+          curl --fail --silent --show-error --globoff \
+            -H "Authorization: Bearer $ASC_JWT" \
+            "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&filter[version]=$BUILD_VERSION&limit=1&include=buildBetaDetail" \
+            -o /tmp/build.json
+          echo "--- build attributes ---"
+          python3 -c 'import json; d=json.load(open("/tmp/build.json")); data=d.get("data") or []; print(json.dumps(data[0]["attributes"], indent=2) if data else "NO BUILD FOUND")'
+          echo "--- included (buildBetaDetail) ---"
+          python3 -c 'import json; d=json.load(open("/tmp/build.json")); inc=d.get("included") or []; print(json.dumps([i["attributes"] for i in inc], indent=2) if inc else "NO INCLUDED RESOURCES")'
+
+      - name: Remove temporary credentials
+        if: always()
+        shell: bash
+        run: rm -rf "$HOME/.appstoreconnect"
