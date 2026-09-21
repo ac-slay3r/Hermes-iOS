@@ -285,10 +285,19 @@ jobs:
           PY
           }
           ASC_JWT=$(make_token)
-          APP_ID=$(curl --fail --silent --show-error --globoff \
-            -H "Authorization: Bearer ${ASC_JWT}" \
-            'https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=cool.n0thing.hermes&limit=1' \
-            | python3 -c 'import json,sys; data=json.load(sys.stdin)["data"]; assert len(data)==1; print(data[0]["id"])')
+          APP_ID=""
+          for _ in $(seq 1 5); do
+            ASC_JWT=$(make_token)
+            if APP_ID=$(curl --fail --silent --show-error --globoff \
+              -H "Authorization: Bearer $ASC_JWT" \
+              'https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=cool.n0thing.hermes&limit=1' \
+              | python3 -c 'import json,sys; data=json.load(sys.stdin)["data"]; assert len(data)==1; print(data[0]["id"])'); then
+              break
+            fi
+            APP_ID=""
+            sleep 10
+          done
+          test -n "$APP_ID"
           for _ in $(seq 1 30); do
             ASC_JWT=$(make_token)
             FOUND=$(curl --fail --silent --show-error --globoff \
