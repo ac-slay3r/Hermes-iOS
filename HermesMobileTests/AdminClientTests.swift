@@ -738,6 +738,36 @@ final class AdminClientTests: XCTestCase {
         XCTAssertTrue(transport.requests.isEmpty)
     }
 
+    // MARK: - Target persistence (address/profile only; no tokens)
+
+    func testRestoredTargetPrefillsFieldsButDoesNotAutoConnect() async throws {
+        let persistence = AdminFixtureTargetPersistence()
+        persistence.saved = (address: "https://saved.example.com", profile: "work")
+
+        let restored = persistence.loadLastAdminTarget()
+
+        XCTAssertEqual(restored?.address, "https://saved.example.com")
+        XCTAssertEqual(restored?.profile, "work")
+    }
+
+    func testSavingTargetPersistsExactAddressAndProfile() async throws {
+        let persistence = AdminFixtureTargetPersistence()
+
+        persistence.saveLastAdminTarget(address: "https://dashboard.example.com", profile: "default")
+
+        XCTAssertEqual(persistence.saved?.address, "https://dashboard.example.com")
+        XCTAssertEqual(persistence.saved?.profile, "default")
+    }
+
+    func testClearingTargetRemovesStoredValue() async throws {
+        let persistence = AdminFixtureTargetPersistence()
+        persistence.saved = (address: "https://dashboard.example.com", profile: "default")
+
+        persistence.clearLastAdminTarget()
+
+        XCTAssertNil(persistence.loadLastAdminTarget())
+    }
+
     private func makeEditor(_ transport: any AdminTransport) throws -> AdminEditor {
         AdminEditor(client: HermesAdminClient(transport: transport), target: try AdminTarget(address: "https://example.com", profile: "default"))
     }
@@ -855,6 +885,21 @@ private final class AdminFixtureCredentialStore: AdminCredentialPersisting {
     func delete(_ credential: AdminStoredCredential, for target: AdminTarget) async throws {
         guard saved == credential else { return }
         try await delete(for: target)
+    }
+}
+
+@MainActor
+private final class AdminFixtureTargetPersistence: AdminTargetPersistenceProtocol {
+    var saved: (address: String, profile: String)?
+
+    func loadLastAdminTarget() -> (address: String, profile: String)? { saved }
+
+    func saveLastAdminTarget(address: String, profile: String) {
+        saved = (address: address, profile: profile)
+    }
+
+    func clearLastAdminTarget() {
+        saved = nil
     }
 }
 

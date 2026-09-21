@@ -97,6 +97,11 @@ struct AdminRoot: View {
     @State private var signingIn = false
     @State private var refreshingOverview = false
     @State private var connectionMessage: String?
+    private let targetPersistence: any AdminTargetPersistenceProtocol
+
+    init(targetPersistence: any AdminTargetPersistenceProtocol = .liveAdminTargetPersistence) {
+        self.targetPersistence = targetPersistence
+    }
 
     var body: some View {
         NavigationStack {
@@ -126,6 +131,7 @@ struct AdminRoot: View {
                             overview = nil
                             authSession = nil
                             connectionMessage = nil
+                            targetPersistence.saveLastAdminTarget(address: address, profile: profile)
                         } catch {
                             target = nil
                             invalidTarget = true
@@ -220,8 +226,18 @@ struct AdminRoot: View {
             .navigationTitle("Hermes")
             .onChange(of: address) { _, _ in resetSelection() }
             .onChange(of: profile) { _, _ in resetSelection() }
+            .task { restoreLastTarget() }
         }
         .preferredColorScheme(.dark)
+    }
+
+    /// Restores only the last-reviewed, non-secret address/profile fields so the user
+    /// does not retype them every launch. Does not restore `target` or attempt sign-in;
+    /// the user still explicitly reviews and authenticates, matching existing behavior.
+    private func restoreLastTarget() {
+        guard address.isEmpty, let saved = targetPersistence.loadLastAdminTarget() else { return }
+        address = saved.address
+        profile = saved.profile
     }
 
     @ViewBuilder
