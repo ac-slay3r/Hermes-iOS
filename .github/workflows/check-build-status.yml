@@ -65,6 +65,13 @@ jobs:
           python3 -c 'import json; d=json.load(open("/tmp/build.json")); data=d.get("data") or []; print(json.dumps(data[0]["attributes"], indent=2) if data else "NO BUILD FOUND")'
           echo "--- included (buildBetaDetail) ---"
           python3 -c 'import json; d=json.load(open("/tmp/build.json")); inc=d.get("included") or []; print(json.dumps([i["attributes"] for i in inc], indent=2) if inc else "NO INCLUDED RESOURCES")'
+          echo "--- 10 most recent uploaded builds (any version) ---"
+          ASC_JWT=$(make_token)
+          curl --fail --silent --show-error --globoff \
+            -H "Authorization: Bearer $ASC_JWT" \
+            "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&sort=-uploadedDate&limit=10" \
+            -o /tmp/recent.json
+          python3 -c 'import json; d=json.load(open("/tmp/recent.json")); [print(b["attributes"].get("version"), b["attributes"].get("uploadedDate"), b["attributes"].get("processingState")) for b in d.get("data",[])]'
 
       - name: Remove temporary credentials
         if: always()
