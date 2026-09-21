@@ -30,11 +30,13 @@ struct ChatInputBar: View {
     let onSlashCommand: (SlashCommand, String?) -> Void
 
     var commandCatalog: [SlashCommand] = SlashCommand.allBuiltIn
+    var pinnedCommandIDs: [String] = []
     var allowsDictation = true
 
     @State private var speechService = LiveSpeechService()
     @State private var dictationBaseText = ""
     @State private var dictationError: String?
+    @State private var showCommandPalette = false
 
     private var canSend: Bool {
         let hasText = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -86,12 +88,26 @@ struct ChatInputBar: View {
         }
     }
 
+    private var displayedCommands: [SlashCommand] {
+        if isSlashMode { return filteredCommands }
+        return commandCatalog.filter { $0.suggestedArgument == nil || pinnedCommandIDs.contains($0.id) }
+    }
+
     var body: some View {
         VStack(spacing: Design.Spacing.xs) {
-            if isSlashMode && !filteredCommands.isEmpty {
-                SlashCommandMenu(commands: filteredCommands) { command in
+            if (isSlashMode || showCommandPalette) && !displayedCommands.isEmpty {
+                SlashCommandMenu(commands: displayedCommands, pinnedCommandIDs: pinnedCommandIDs) { command in
+                    if showCommandPalette {
+                        let suffix = command.suggestedArgument.map { " \($0)" }
+                            ?? (command.acceptsArgument ? " " : "")
+                        text = "/\(command.name)\(suffix)"
+                        showCommandPalette = false
+                        isFocused.wrappedValue = true
+                        return
+                    }
                     let arg = command.suggestedArgument ?? (command.acceptsArgument ? parsedSlashInput.argument : nil)
                     text = ""
+                    showCommandPalette = false
                     onSlashCommand(command, arg)
                 }
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -147,6 +163,16 @@ struct ChatInputBar: View {
                     .accessibilityLabel("Add attachment")
 
                     assistanceMenu
+
+                    Button {
+                        showCommandPalette.toggle()
+                    } label: {
+                        Image(systemName: "command")
+                            .font(.system(size: Design.Size.iconMedium, weight: .medium))
+                            .foregroundStyle(showCommandPalette ? Design.Brand.accent : Design.Colors.secondaryForeground)
+                            .frame(minWidth: Design.Size.minTapTarget, minHeight: Design.Size.minTapTarget)
+                    }
+                    .accessibilityLabel("Browse commands")
 
                     Spacer()
 

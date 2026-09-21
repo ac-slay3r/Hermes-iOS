@@ -17,6 +17,10 @@ struct ChatScreen: View {
     @FocusState private var isComposerFocused: Bool
 
     @State private var showAttachmentPicker = false
+    @State private var showProjectPicker = false
+    @State private var showProjectSwitchConfirmation = false
+    @State private var pendingProjectSelection: HostProject?
+    @State private var chatActionError: String?
     private let thinkingIndicatorID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
 
     var body: some View {
@@ -28,6 +32,7 @@ struct ChatScreen: View {
                 if pairingStore.isPaired, connectionBannerState != .online {
                     connectionBanner
                 }
+                projectContextBar
                 messageList
                 ChatInputBar(
                     text: $messageText,
@@ -38,7 +43,8 @@ struct ChatScreen: View {
                     onStop: { chatStore.cancelStreaming() },
                     onAttach: { showAttachmentPicker = true },
                     onSlashCommand: handleSlashCommand,
-                    commandCatalog: chatStore.commandCatalog
+                    commandCatalog: chatStore.commandCatalog,
+                    pinnedCommandIDs: container.projectStore.selectedProject?.pinnedCommandIds ?? []
                 )
             }
         }
@@ -49,6 +55,12 @@ struct ChatScreen: View {
             chatStore.setPollingEnabled(true)
             await hostStore.refresh()
             await chatStore.loadConversationIfNeeded()
+            container.projectStore.setHostScope(hostStore.currentHost?.id)
+            await container.projectStore.refresh()
+            container.projectStore.alignSelection(
+                with: chatStore.conversation?.projectID,
+                conversationIsEmpty: chatStore.conversation?.messages.isEmpty ?? true
+            )
         }
         .task {
             while !Task.isCancelled {
@@ -82,11 +94,33 @@ struct ChatScreen: View {
             titleVisibility: .visible
         ) {
             Button("Clear", role: .destructive) {
-                Task { await performClear() }
+                Task { _ = await performClear() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will archive the current conversation and start a new session. This cannot be undone.")
+        }
+        .confirmationDialog(
+            "Start a new conversation?",
+            isPresented: $showProjectSwitchConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Start New Conversation", role: .destructive) {
+                Task {
+                    guard await performClear(),
+                          chatStore.conversation?.messages.isEmpty ?? false,
+                          let pendingProjectSelection
+                    else {
+                        self.pendingProjectSelection = nil
+                        return
+                    }
+                    try? container.projectStore.select(pendingProjectSelection, conversationIsEmpty: true)
+                    self.pendingProjectSelection = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingProjectSelection = nil }
+        } message: {
+            Text("Projects bind a conversation to one host workspace. Changing projects archives the current conversation first.")
         }
         .sheet(isPresented: $showAttachmentPicker) {
             AttachmentPickerSheet { result in
@@ -94,6 +128,21 @@ struct ChatScreen: View {
             }
             .presentationDetents([.height(220)])
             .presentationDragIndicator(.hidden)
+        }
+        .sheet(isPresented: $showProjectPicker) {
+            ProjectPickerSheet(
+                projectStore: container.projectStore,
+                commandCatalog: chatStore.commandCatalog,
+                onSelect: selectProject
+            )
+        }
+        .alert("Could Not Complete Action", isPresented: Binding(
+            get: { chatActionError != nil },
+            set: { if !$0 { chatActionError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(chatActionError ?? "Try again.")
         }
     }
 
@@ -108,6 +157,9 @@ struct ChatScreen: View {
             HStack(spacing: Design.Spacing.xs) {
                 GlassCircleButton(icon: "waveform", accessibilityLabel: "Start voice mode") {
                     router.isVoiceOverlayPresented = true
+                }
+                GlassCircleButton(icon: "folder", accessibilityLabel: "Choose project") {
+                    showProjectPicker = true
                 }
                 GlassCircleButton(icon: "gearshape", accessibilityLabel: "Open settings") {
                     router.presentSheet(.settings)
@@ -379,6 +431,36 @@ struct ChatScreen: View {
         sessionStore.state.connectionStatus == .error ? .unreachable : hostStore.connectionState
     }
 
+    private var projectContextBar: some View {
+        Button {
+            showProjectPicker = true
+        } label: {
+            HStack(spacing: Design.Spacing.xs) {
+                Image(systemName: "folder")
+                    .foregroundStyle(Design.Brand.accent)
+                VStack(alignment: .leading, spacing: Design.Spacing.xxxs) {
+                    Text(container.projectStore.selectedProject?.name ?? "Choose a project")
+                        .font(Design.Typography.callout)
+                        .foregroundStyle(Design.Colors.foreground)
+                    Text(container.projectStore.selectedProject?.workspacePath ?? "Bind new work to a host workspace")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Design.Colors.secondaryForeground)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(Design.Typography.caption)
+                    .foregroundStyle(Design.Colors.secondaryForeground)
+            }
+            .padding(.horizontal, Design.Spacing.md)
+            .padding(.vertical, Design.Spacing.sm)
+            .background(Design.Colors.surface)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Choose project")
+        .accessibilityValue(container.projectStore.selectedProject?.name ?? "No project selected")
+    }
+
     private var connectionBanner: some View {
         HStack(alignment: .center, spacing: Design.Spacing.sm) {
             Image(systemName: connectionBannerIcon)
@@ -476,6 +558,17 @@ struct ChatScreen: View {
     }
 
     // MARK: - Actions
+
+    private func selectProject(_ project: HostProject) {
+        if project.id == container.projectStore.selectedProjectID { return }
+        let conversationIsEmpty = chatStore.conversation?.messages.isEmpty ?? true
+        if conversationIsEmpty {
+            try? container.projectStore.select(project, conversationIsEmpty: true)
+        } else {
+            pendingProjectSelection = project
+            showProjectSwitchConfirmation = true
+        }
+    }
 
     private func sendMessage() {
         let content = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -588,12 +681,15 @@ struct ChatScreen: View {
         }
     }
 
-    private func performClear() async {
+    @discardableResult
+    private func performClear() async -> Bool {
         do {
             try await chatStore.clearConversation()
             showStatusCard = false
+            return true
         } catch {
-            // Conversation unchanged on failure — user can retry
+            chatActionError = error.localizedDescription
+            return false
         }
     }
 

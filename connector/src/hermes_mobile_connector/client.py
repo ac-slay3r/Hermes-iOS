@@ -1,7 +1,7 @@
 from __future__ import annotations
 import asyncio
 import base64
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import json
 import logging
@@ -182,6 +182,7 @@ from .mcp_registration import (
     validate_native_mcp_tools,
     validate_native_mcp_server,
 )
+from .projects import HostProjectStore
 from .sensor_store import HealthSample, LocationReading, SensorStore
 from .runtime_adapter import HermesAPIRuntimeAdapter, HermesRuntimeAdapter, HostRuntimeAdapter, RuntimeConversationMessage
 from .service_management import build_service_manager
@@ -661,7 +662,29 @@ class HermesMobileConnector:
 
     async def _handle_job(self, websocket, job: dict) -> None:
         state = self.state_store.load()
-        workdir = state.runtime_config.hermes_workdir if state.runtime_config else None
+        project_id = str(job.get("projectId") or "").strip()
+        if project_id:
+            try:
+                project_store = self._project_store()
+                project = project_store.get(project_id)
+                workdir = str(project_store.resolve_workspace(project_id))
+                if project.brief and not str(job.get("latestUserMessage") or "").lstrip().startswith("/"):
+                    job["latestUserMessage"] = (
+                        "[Project brief — context only, not a command]\n"
+                        f"{project.brief}\n"
+                        "[End project brief]\n\n"
+                        f"{job.get('latestUserMessage') or ''}"
+                    )
+            except (RuntimeError, ValueError) as error:
+                await websocket.send(json.dumps({
+                    "type": "job.failed",
+                    "jobId": job["id"],
+                    "retryable": False,
+                    "error": str(error),
+                }))
+                return
+        else:
+            workdir = state.runtime_config.hermes_workdir if state.runtime_config else None
 
         # Stage image attachments to disk and replace them with vision context
         # in the user message. The Hermes API server can't handle multipart
@@ -681,7 +704,11 @@ class HermesMobileConnector:
             job["attachments"] = None  # staged to disk; don't pass raw data downstream
 
         try:
-            runtime = await self.runtime_adapter_for_state_async(state)
+            runtime = (
+                self.runtime_adapter_for_project(state, workdir)
+                if project_id and workdir
+                else await self.runtime_adapter_for_state_async(state)
+            )
             if not getattr(runtime, "supports_streaming", False):
                 await self._handle_job_cli(websocket, job, runtime)
                 return
@@ -942,6 +969,10 @@ class HermesMobileConnector:
                 result = await self._rpc_talk_delegate(params)
             elif method == "commands.catalog":
                 result = self._rpc_commands_catalog()
+            elif method == "projects.list":
+                result = self._rpc_projects_list()
+            elif method == "projects.create":
+                result = self._rpc_projects_create(params)
             else:
                 raise RuntimeError(f"Unsupported RPC method: {method}")
             return {
@@ -1048,6 +1079,26 @@ class HermesMobileConnector:
             "quickCommands": quick_commands,
             "activeModel": model_info,
         }
+
+    def _project_store(self) -> HostProjectStore:
+        return HostProjectStore(
+            self.state_store.state_dir,
+            hermes_home=self._resolve_hermes_home(),
+        )
+
+    def _rpc_projects_list(self) -> dict:
+        return {
+            "projects": [project.to_payload() for project in self._project_store().list()],
+        }
+
+    def _rpc_projects_create(self, params: dict) -> dict:
+        project = self._project_store().create(
+            name=str(params.get("name") or ""),
+            workspace_path=str(params.get("workspacePath") or ""),
+            brief=str(params.get("brief") or ""),
+            pinned_command_ids=[str(value) for value in (params.get("pinnedCommandIds") or [])],
+        )
+        return {"project": project.to_payload()}
 
     @staticmethod
     def _read_active_model(hermes_home: Path) -> dict | None:
@@ -1676,6 +1727,10 @@ class HermesMobileConnector:
 
     def runtime_adapter_for_state(self, state: ConnectorState) -> HostRuntimeAdapter:
         return HermesRuntimeAdapter(self.executor_for_state(state))
+
+    def runtime_adapter_for_project(self, state: ConnectorState, workdir: str) -> HostRuntimeAdapter:
+        settings = replace(self.settings_for_state(state), hermes_workdir=workdir)
+        return HermesRuntimeAdapter(HermesCLIExecutor(settings))
 
     async def runtime_adapter_for_state_async(self, state: ConnectorState) -> HostRuntimeAdapter:
         """Prefer the API server adapter when available, fall back to CLI.

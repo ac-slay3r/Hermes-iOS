@@ -944,6 +944,21 @@ def get_or_create_current_conversation(db: Session, *, user_id: str) -> Conversa
     return conversation
 
 
+def get_active_conversation_for_user(
+    db: Session,
+    *,
+    user_id: str,
+    conversation_id: str,
+) -> Conversation | None:
+    return db.scalar(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id,
+            Conversation.is_archived.is_(False),
+        )
+    )
+
+
 def archive_current_conversation(db: Session, *, user_id: str) -> Conversation | None:
     conversation = db.scalar(
         select(Conversation).where(
@@ -1051,12 +1066,14 @@ def create_message_job(
     conversation_id: str,
     user_message_id: str,
     session_id_snapshot: str | None,
+    project_id: str | None = None,
 ) -> MessageJob:
     job = MessageJob(
         user_id=user_id,
         conversation_id=conversation_id,
         user_message_id=user_message_id,
         session_id_snapshot=session_id_snapshot,
+        project_id=project_id,
         status="queued",
         retryable=True,
     )
@@ -1391,6 +1408,7 @@ def serialize_conversation(conversation: Conversation, messages: list[Message], 
     result = {
         "id": conversation.id,
         "title": conversation.title,
+        "projectId": conversation.project_id,
         "updatedAt": conversation.updated_at,
         "messages": [
             serialize_message(message, job=jobs_by_message_id.get(message.id))

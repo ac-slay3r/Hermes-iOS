@@ -16,7 +16,7 @@ import json
 from fastapi import Body, Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from .apns import PushResult, create_apns_client
@@ -37,6 +37,7 @@ from .schemas import (
     MessageCreateRequest,
     PairingRedeemRequest,
     PhonePairingRedeemRequest,
+    ProjectCreateRequest,
     SensorHealthRequest,
     SensorLocationRequest,
     PushRegisterRequest,
@@ -68,6 +69,7 @@ from .services import (
     get_inbox_item_for_user,
     get_message_job,
     get_message_job_for_user_message,
+    get_active_conversation_for_user,
     get_or_create_current_conversation,
     get_voice_session,
     inject_voice_transcript,
@@ -207,7 +209,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.connector_sessions: dict[str, ConnectorSession] = {}
     app.state.sensor_delivery_waiters: dict[str, asyncio.Future[bool]] = {}
-    app.state.connector_rpc_waiters: dict[str, asyncio.Future[dict]] = {}
+    app.state.connector_rpc_waiters: dict[str, tuple[str, asyncio.Future[dict]]] = {}
     app.state.job_event_queues: dict[str, list[asyncio.Queue]] = {}
     app.state.job_event_buffers: dict[str, list[dict]] = {}
 
@@ -329,6 +331,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def resolve_connector_rpc_response(
         request_id: str | None,
+        connection_nonce: str,
         *,
         success: bool,
         result: dict | None = None,
@@ -336,8 +339,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> None:
         if request_id is None:
             return
-        waiter = app.state.connector_rpc_waiters.pop(request_id, None)
-        if waiter is None or waiter.done():
+        pending = app.state.connector_rpc_waiters.get(request_id)
+        if pending is None:
+            return
+        expected_nonce, waiter = pending
+        if expected_nonce != connection_nonce:
+            return
+        app.state.connector_rpc_waiters.pop(request_id, None)
+        if waiter.done():
             return
         if success:
             waiter.set_result(result or {})
@@ -357,7 +366,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         request_id = str(uuid.uuid4())
         waiter: asyncio.Future[dict] = asyncio.get_running_loop().create_future()
-        app.state.connector_rpc_waiters[request_id] = waiter
+        app.state.connector_rpc_waiters[request_id] = (session.connection_nonce, waiter)
 
         try:
             await session.websocket.send_json(
@@ -512,6 +521,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "sessionId": job.session_id_snapshot,
             "timeoutSeconds": settings.connector_job_lease_seconds,
         }
+        if job.project_id:
+            job_data["projectId"] = job.project_id
         if voice_transcript_lines:
             job_data["voiceTranscriptContext"] = "\n".join(voice_transcript_lines)
         if user_message.attachments_data:
@@ -973,6 +984,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except HTTPException:
             # Host offline — return empty catalog, iOS falls back to built-in list
             return success({"commands": [], "skills": []})
+
+    @app.get("/v1/projects")
+    async def list_projects(auth: AuthContext = Depends(get_auth_context)) -> dict:
+        result = await send_connector_rpc(
+            auth.user.id,
+            method="projects.list",
+            timeout_seconds=10.0,
+        )
+        return success(result)
+
+    @app.post("/v1/projects")
+    async def create_project(
+        payload: ProjectCreateRequest,
+        auth: AuthContext = Depends(get_auth_context),
+    ) -> dict:
+        result = await send_connector_rpc(
+            auth.user.id,
+            method="projects.create",
+            params=payload.model_dump(),
+            timeout_seconds=10.0,
+        )
+        return success(result)
 
     @app.post("/v1/hosts/current/revoke")
     def revoke_current_host(
@@ -1567,7 +1600,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     db.commit()
                     return success_response(payload_data, status_code=status_code)
 
-        conversation = get_or_create_current_conversation(db, user_id=auth.user.id)
+        if payload.conversationId is not None:
+            conversation = get_active_conversation_for_user(
+                db,
+                user_id=auth.user.id,
+                conversation_id=str(payload.conversationId),
+            )
+            if conversation is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Conversation is unavailable or no longer current.",
+                )
+        else:
+            conversation = get_or_create_current_conversation(db, user_id=auth.user.id)
+        requested_project_id = str(payload.projectId) if payload.projectId else None
+        if requested_project_id:
+            if conversation.project_id is None:
+                existing_messages = list_conversation_messages(db, conversation_id=conversation.id)
+                if existing_messages:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Start a new conversation before selecting a project.",
+                    )
+                claimed = db.execute(
+                    update(Conversation)
+                    .where(
+                        Conversation.id == conversation.id,
+                        Conversation.user_id == auth.user.id,
+                        Conversation.project_id.is_(None),
+                    )
+                    .values(project_id=requested_project_id)
+                )
+                db.commit()
+                if claimed.rowcount != 1:
+                    db.refresh(conversation)
+                    if conversation.project_id != requested_project_id:
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="This conversation is already bound to a different project.",
+                        )
+                db.refresh(conversation)
+            elif conversation.project_id != requested_project_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This conversation is already bound to a different project.",
+                )
         initial_delivery_status = "pending" if request_settings.hermes_adapter == "connector" else "sent"
         attachments_raw = (
             [att.model_dump() for att in payload.attachments]
@@ -1591,6 +1668,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conversation_id=conversation.id,
             user_message_id=user_message.id,
             session_id_snapshot=conversation.hermes_session_id,
+            project_id=conversation.project_id,
         )
 
         if request_settings.hermes_adapter == "connector":
@@ -1910,6 +1988,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             if message_type == "rpc.response":
                                 resolve_connector_rpc_response(
                                     incoming.get("requestId"),
+                                    connection_nonce,
                                     success=bool(incoming.get("success", False)),
                                     result=incoming.get("result"),
                                     error=incoming.get("error"),
@@ -2041,6 +2120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if incoming.get("type") == "rpc.response":
                     resolve_connector_rpc_response(
                         incoming.get("requestId"),
+                        connection_nonce,
                         success=bool(incoming.get("success", False)),
                         result=incoming.get("result"),
                         error=incoming.get("error"),

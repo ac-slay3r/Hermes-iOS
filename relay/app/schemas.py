@@ -108,6 +108,7 @@ class AttachmentPayload(BaseModel):
 
 class MessageCreateRequest(BaseModel):
     conversationId: UUID | None = None
+    projectId: str | None = Field(default=None, pattern=r"^p_[a-f0-9]{8}$")
     text: str = Field(default="")
     clientMessageId: UUID | None = None
     attachments: list[AttachmentPayload] | None = Field(default=None, max_length=4)
@@ -119,6 +120,13 @@ class MessageCreateRequest(BaseModel):
         if not has_text and not has_attachments:
             raise ValueError("Either text or attachments must be provided.")
         return self
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    workspacePath: str = Field(min_length=1, max_length=4096)
+    brief: str = Field(default="", max_length=4_000)
+    pinnedCommandIds: list[str] = Field(default_factory=list, max_length=24)
 
 
 class InboxActionRequest(BaseModel):

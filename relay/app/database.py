@@ -49,6 +49,8 @@ class Database:
             conversation_columns = {column["name"] for column in inspector.get_columns("conversations")}
             if "hermes_session_id" not in conversation_columns:
                 connection.execute(text("ALTER TABLE conversations ADD COLUMN hermes_session_id TEXT"))
+            if "project_id" not in conversation_columns:
+                connection.execute(text("ALTER TABLE conversations ADD COLUMN project_id TEXT"))
 
             message_columns = {column["name"] for column in inspector.get_columns("messages")}
             if "delivery_status" not in message_columns:
@@ -76,6 +78,8 @@ class Database:
                 connection.execute(text("ALTER TABLE message_jobs ADD COLUMN usage_data JSON"))
             if "diff_data" not in job_columns:
                 connection.execute(text("ALTER TABLE message_jobs ADD COLUMN diff_data JSON"))
+            if "project_id" not in job_columns:
+                connection.execute(text("ALTER TABLE message_jobs ADD COLUMN project_id TEXT"))
 
             if "source" not in message_columns:
                 connection.execute(text("ALTER TABLE messages ADD COLUMN source TEXT"))

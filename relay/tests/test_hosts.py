@@ -1091,3 +1091,151 @@ def test_clear_conversation_when_none_exists(tmp_path):
         assert clear_response.status_code == 200
         conversation = clear_response.json()["data"]["conversation"]
         assert len(conversation["messages"]) == 0
+
+
+def test_projects_are_forwarded_to_the_authenticated_users_connector(tmp_path):
+    with build_client(tmp_path) as client:
+        connector_data = setup_connector(client)
+        pairing_code = create_phone_pairing_code(client, connector_data["connectorCredential"])
+        access_token = redeem_phone(
+            client,
+            pairing_code["displayCode"],
+            str(uuid.uuid4()),
+        )["auth"]["accessToken"]
+        auth = {"Authorization": f"Bearer {access_token}"}
+
+        with client.websocket_connect(
+            "/v1/hosts/ws",
+            headers={"Authorization": f"Bearer {connector_data['connectorCredential']}"},
+        ) as websocket:
+            websocket.send_json(
+                {
+                    "type": "hello",
+                    "connector": {
+                        "platform": "macos",
+                        "hostname": "test-host",
+                        "connectorVersion": "0.1.0",
+                        "hermesCommand": "/usr/local/bin/hermes",
+                        "hermesVersion": "hermes 1.2.3",
+                    },
+                }
+            )
+            assert websocket.receive_json()["type"] == "ready"
+
+            created: dict = {}
+
+            def create_project() -> None:
+                created["response"] = client.post(
+                    "/v1/projects",
+                    headers=auth,
+                    json={
+                        "name": "Hermes iOS",
+                        "workspacePath": "/srv/hermes-ios",
+                        "brief": "Ship the native client.",
+                        "pinnedCommandIds": ["status", "branch"],
+                    },
+                )
+
+            create_thread = Thread(target=create_project)
+            create_thread.start()
+            create_rpc = websocket.receive_json()
+            assert create_rpc["type"] == "rpc.request"
+            assert create_rpc["method"] == "projects.create"
+            assert create_rpc["params"]["workspacePath"] == "/srv/hermes-ios"
+            websocket.send_json(
+                {
+                    "type": "rpc.response",
+                    "requestId": create_rpc["requestId"],
+                    "success": True,
+                    "result": {
+                        "project": {
+                            "id": "p_11111111",
+                            **create_rpc["params"],
+                        }
+                    },
+                }
+            )
+            create_thread.join(timeout=5)
+            assert created["response"].status_code == 200
+            assert created["response"].json()["data"]["project"]["id"] == "p_11111111"
+
+            listed: dict = {}
+
+            def list_projects() -> None:
+                listed["response"] = client.get("/v1/projects", headers=auth)
+
+            list_thread = Thread(target=list_projects)
+            list_thread.start()
+            list_rpc = websocket.receive_json()
+            assert list_rpc["method"] == "projects.list"
+            websocket.send_json(
+                {
+                    "type": "rpc.response",
+                    "requestId": list_rpc["requestId"],
+                    "success": True,
+                    "result": {"projects": [created["response"].json()["data"]["project"]]},
+                }
+            )
+            list_thread.join(timeout=5)
+            assert listed["response"].status_code == 200
+            assert listed["response"].json()["data"]["projects"][0]["name"] == "Hermes iOS"
+
+
+def test_project_id_is_bound_to_connector_job_payload(tmp_path):
+    with build_client(tmp_path) as client:
+        connector_data = setup_connector(client)
+        pairing_code = create_phone_pairing_code(client, connector_data["connectorCredential"])
+        access_token = redeem_phone(
+            client,
+            pairing_code["displayCode"],
+            str(uuid.uuid4()),
+        )["auth"]["accessToken"]
+
+        with client.websocket_connect(
+            "/v1/hosts/ws",
+            headers={"Authorization": f"Bearer {connector_data['connectorCredential']}"},
+        ) as websocket:
+            websocket.send_json(
+                {
+                    "type": "hello",
+                    "connector": {
+                        "platform": "macos",
+                        "hostname": "test-host",
+                        "connectorVersion": "0.1.0",
+                        "hermesCommand": "/usr/local/bin/hermes",
+                        "hermesVersion": "hermes 1.2.3",
+                    },
+                }
+            )
+            assert websocket.receive_json()["type"] == "ready"
+            response: dict = {}
+
+            def send_message() -> None:
+                response["payload"] = client.post(
+                    "/v1/messages",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    json={"text": "Inspect it", "projectId": "p_11111111"},
+                )
+
+            thread = Thread(target=send_message)
+            thread.start()
+            job = websocket.receive_json()["job"]
+            assert job["projectId"] == "p_11111111"
+            websocket.send_json(
+                {
+                    "type": "job.result",
+                    "jobId": job["id"],
+                    "text": "Done",
+                    "sessionId": "session-project-1",
+                }
+            )
+            thread.join(timeout=5)
+            assert response["payload"].status_code == 202
+
+            switched = client.post(
+                "/v1/messages",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={"text": "Switch silently", "projectId": "p_aaaaaaaa"},
+            )
+            assert switched.status_code == 409
+            assert "different project" in switched.json()["detail"]

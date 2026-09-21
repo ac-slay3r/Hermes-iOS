@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B10000000000000000000001 /* HostProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* HostProject.swift */; };
+		B10000000000000000000002 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* ProjectStore.swift */; };
+		B10000000000000000000003 /* ProjectServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* ProjectServiceProtocol.swift */; };
+		B10000000000000000000004 /* LiveProjectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000004 /* LiveProjectService.swift */; };
+		B10000000000000000000005 /* MockProjectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000005 /* MockProjectService.swift */; };
+		B10000000000000000000006 /* ProjectPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000006 /* ProjectPickerSheet.swift */; };
 		3FC30370603D7A0C3F087003 /* AdminLaunchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FC0D8DA927301443BB93DF9 /* AdminLaunchUITests.swift */; };
 		92BA2EF06A1EBB40419CB948 /* AdminClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E74AD9E3D25B18482F365BD /* AdminClientTests.swift */; };
 		852E3063A25EE1864919C69F /* AdminRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57CA548DC02860C24B0CABFA /* AdminRoot.swift */; };
@@ -232,6 +238,12 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		F10000000000000000000001 /* HostProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostProject.swift; sourceTree = "<group>"; };
+		F10000000000000000000002 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
+		F10000000000000000000003 /* ProjectServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectServiceProtocol.swift; sourceTree = "<group>"; };
+		F10000000000000000000004 /* LiveProjectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveProjectService.swift; sourceTree = "<group>"; };
+		F10000000000000000000005 /* MockProjectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockProjectService.swift; sourceTree = "<group>"; };
+		F10000000000000000000006 /* ProjectPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectPickerSheet.swift; sourceTree = "<group>"; };
 		8FC0D8DA927301443BB93DF9 /* AdminLaunchUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobileUITests/AdminLaunchUITests.swift; sourceTree = SOURCE_ROOT; };
 		7E74AD9E3D25B18482F365BD /* AdminClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobileTests/AdminClientTests.swift; sourceTree = SOURCE_ROOT; };
 		57CA548DC02860C24B0CABFA /* AdminRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/Administration/AdminRoot.swift; sourceTree = SOURCE_ROOT; };
@@ -442,6 +454,7 @@
 				2F7803CC2C39D6DE07427694 /* Inbox */,
 				5A567A434783303AF3B556A0 /* Onboarding */,
 				519C0DC56DB49FF9585F8C02 /* Permissions */,
+				A20000000000000000000001 /* Projects */,
 				D6A1379DF0671EEBA650BA12 /* Settings */,
 				9EF58353FEB7F490A19CDF47 /* Talk */,
 			);
@@ -477,6 +490,7 @@
 				36500DDDD7B917A3A3C1A3FC /* InboxStore.swift */,
 				F07B14E26F36BD2CD9778781 /* PairingStore.swift */,
 				ACB3C95563F41E3B154C3DF3 /* PermissionsStore.swift */,
+				F10000000000000000000002 /* ProjectStore.swift */,
 				41F982E7FF317AD2BDA8879C /* SettingsStore.swift */,
 				2A16440BD7ECCFF064BD6232 /* TalkStore.swift */,
 			);
@@ -546,6 +560,7 @@
 				D9866832C1360E12474ACA37 /* LiveMotionService.swift */,
 				2F0B373CA9EB377B54B6C9CD /* LiveNotificationService.swift */,
 				2A1DE23F50DFDF112A61490D /* LivePairingService.swift */,
+				F10000000000000000000004 /* LiveProjectService.swift */,
 				A74A05574828199D600F3F75 /* LiveSessionBootstrapService.swift */,
 				20748383C1082575AD5C086C /* LiveSpeechService.swift */,
 				607671AC8EF52AAFE3131430 /* LiveVoiceSessionService.swift */,
@@ -566,6 +581,7 @@
 				6AC675ACB6407262E9D2363E /* MediaServiceProtocol.swift */,
 				E19B4F10FBB5D872518481F9 /* NotificationServiceProtocol.swift */,
 				5A2EEE2A3714BA7D20F4DAD3 /* PairingServiceProtocol.swift */,
+				F10000000000000000000003 /* ProjectServiceProtocol.swift */,
 				C37C1DE0D5E3A2479A403577 /* SecureStoreProtocol.swift */,
 				73518DAA2B5C3318F623C266 /* SessionBootstrapServiceProtocol.swift */,
 				A3638A04F9C4EF799250E210 /* SyncCoordinatorProtocol.swift */,
@@ -638,6 +654,7 @@
 				70A40E5EA51E036A1BD1C3AE /* MockMediaService.swift */,
 				C18F83ECB3EC666614F9D54D /* MockNotificationService.swift */,
 				C4B88518DD7E6AF5C23C915F /* MockPairingService.swift */,
+				F10000000000000000000005 /* MockProjectService.swift */,
 				014F7454548D4B275B575E61 /* MockSecureStore.swift */,
 				48CCADC5326C77064FBA74A8 /* MockSessionBootstrapService.swift */,
 				B9386D66627C83DCF370CDC9 /* MockSyncCoordinator.swift */,
@@ -792,6 +809,14 @@
 			path = Capture;
 			sourceTree = "<group>";
 		};
+		A20000000000000000000001 /* Projects */ = {
+			isa = PBXGroup;
+			children = (
+				F10000000000000000000006 /* ProjectPickerSheet.swift */,
+			);
+			path = Projects;
+			sourceTree = "<group>";
+		};
 		EB9D79947231ED36180C2C4A /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -805,6 +830,7 @@
 				43EABB109930DF9870A27636 /* DeviceRegistrationRequest.swift */,
 				078C83E5060FEBACAC22F2F2 /* HermesActivityAttributes.swift */,
 				06E9521DE6CA159C9089AB10 /* HermesHostStatus.swift */,
+				F10000000000000000000001 /* HostProject.swift */,
 				10FCCF49653C4D623A96D6DA /* HostEnrollmentCode.swift */,
 				41A7265DC07E05B68C845778 /* InboxActionDescriptor.swift */,
 				D6DA9663454A883D0B706562 /* InboxActionResult.swift */,
@@ -1020,6 +1046,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B10000000000000000000001 /* HostProject.swift in Sources */,
+				B10000000000000000000002 /* ProjectStore.swift in Sources */,
+				B10000000000000000000003 /* ProjectServiceProtocol.swift in Sources */,
+				B10000000000000000000004 /* LiveProjectService.swift in Sources */,
+				B10000000000000000000005 /* MockProjectService.swift in Sources */,
+				B10000000000000000000006 /* ProjectPickerSheet.swift in Sources */,
 				1C263E03C808494FA94B68A4 /* LocalCaptureIntents.swift in Sources */,
 				FF35A6B216D4446C8979F009 /* LocalIntakeImporter.swift in Sources */,
 				2EF3023F3C8E4563A135E3D8 /* LocalIntakeQueue.swift in Sources */,

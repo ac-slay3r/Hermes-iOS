@@ -22,6 +22,7 @@ final class LiveHermesClient: HermesClientProtocol {
     private struct RelayConversation: Decodable {
         let id: UUID
         let title: String
+        let projectId: String?
         let updatedAt: Date
         let messages: [RelayMessage]
         let latestUsage: TokenUsage?
@@ -71,6 +72,7 @@ final class LiveHermesClient: HermesClientProtocol {
 
     private struct MessageCreateBody: Encodable {
         let conversationId: UUID?
+        let projectId: String?
         let text: String
         let clientMessageId: UUID
         let attachments: [AttachmentPayload]?
@@ -82,17 +84,20 @@ final class LiveHermesClient: HermesClientProtocol {
     private let apiClient: RelayAPIClient
     private let accessTokenProvider: @MainActor () async -> String?
     private let accessTokenRefresher: @MainActor () async -> String?
+    private let projectIdProvider: @MainActor () -> String?
     private let allowDemoFallback: Bool
 
     init(
         apiClient: RelayAPIClient,
         accessTokenProvider: @escaping @MainActor () async -> String?,
         accessTokenRefresher: @escaping @MainActor () async -> String? = { nil },
+        projectIdProvider: @escaping @MainActor () -> String? = { nil },
         allowDemoFallback: Bool = true
     ) {
         self.apiClient = apiClient
         self.accessTokenProvider = accessTokenProvider
         self.accessTokenRefresher = accessTokenRefresher
+        self.projectIdProvider = projectIdProvider
         self.allowDemoFallback = allowDemoFallback
     }
 
@@ -287,6 +292,7 @@ final class LiveHermesClient: HermesClientProtocol {
         }
         let body = MessageCreateBody(
             conversationId: currentConversation?.id,
+            projectId: projectIdProvider(),
             text: text,
             clientMessageId: clientMessageID,
             attachments: payloads
@@ -309,7 +315,8 @@ final class LiveHermesClient: HermesClientProtocol {
             title: relayConversation.title,
             messages: relayConversation.messages.map(mapMessage),
             lastActivity: relayConversation.updatedAt,
-            latestUsage: relayConversation.latestUsage
+            latestUsage: relayConversation.latestUsage,
+            projectID: relayConversation.projectId
         )
     }
 

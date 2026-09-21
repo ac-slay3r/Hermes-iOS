@@ -2264,6 +2264,41 @@ struct AppStoresTests {
         #expect(AdminCockpitPresentation.recoveryGuidance(relayStatus: "ok", hostStatus: "offline") == "The Hermes Host is offline. Make sure it is running and connected to this relay, then refresh.")
     }
 
+    @Test @MainActor
+    func projectStorePersistsSelectionAndBlocksMidConversationSwitches() async throws {
+        let first = HostProject(
+            id: "p_11111111",
+            name: "Hermes iOS",
+            workspacePath: "/srv/hermes-ios",
+            brief: "Ship the app.",
+            pinnedCommandIds: ["status", "branch"]
+        )
+        let second = HostProject(
+            id: "p_aaaaaaaa",
+            name: "Relay",
+            workspacePath: "/srv/relay",
+            brief: "Operate the relay.",
+            pinnedCommandIds: ["usage"]
+        )
+        let suiteName = "project-store-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let service = MockProjectService(projects: [first, second])
+        let store = ProjectStore(service: service, defaults: defaults)
+        let hostID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+
+        store.setHostScope(hostID)
+        await store.refresh()
+        try store.select(first, conversationIsEmpty: true)
+
+        #expect(store.selectedProjectID == first.id)
+        #expect(defaults.string(forKey: "hermes.projects.selectedProjectID.\(hostID.uuidString.lowercased())") == first.id)
+        #expect(throws: ProjectStore.SelectionError.self) {
+            try store.select(second, conversationIsEmpty: false)
+        }
+        #expect(store.selectedProjectID == first.id)
+    }
+
     @Test
     func adminCockpitPresentationMarksInactiveDevicesUnavailableAndShowsRelayRefreshTime() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)

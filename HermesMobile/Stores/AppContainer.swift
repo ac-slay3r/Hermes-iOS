@@ -11,6 +11,7 @@ final class AppContainer {
     let pairingStore: PairingStore
     let hostStore: HermesHostStore
     let chatStore: ChatStore
+    let projectStore: ProjectStore
     let inboxStore: InboxStore
     let permissionsStore: PermissionsStore
     let settingsStore: SettingsStore
@@ -34,6 +35,7 @@ final class AppContainer {
         pairingStore: PairingStore,
         hostStore: HermesHostStore,
         chatStore: ChatStore,
+        projectStore: ProjectStore? = nil,
         inboxStore: InboxStore,
         permissionsStore: PermissionsStore,
         settingsStore: SettingsStore,
@@ -47,6 +49,7 @@ final class AppContainer {
         self.pairingStore = pairingStore
         self.hostStore = hostStore
         self.chatStore = chatStore
+        self.projectStore = projectStore ?? ProjectStore(service: MockProjectService())
         self.inboxStore = inboxStore
         self.permissionsStore = permissionsStore
         self.settingsStore = settingsStore
@@ -172,6 +175,20 @@ final class AppContainer {
             accessTokenProvider: { await sessionStore.currentAccessToken() }
         )
 
+        let projectService: any ProjectServiceProtocol = if usesMockPairingService {
+            MockProjectService()
+        } else {
+            LiveProjectService(
+                apiClient: apiClient,
+                accessTokenProvider: { await sessionStore.currentAccessToken() },
+                accessTokenRefresher: {
+                    await sessionStore.refreshAccessTokenIfNeeded()
+                    return await sessionStore.currentAccessToken()
+                }
+            )
+        }
+        let projectStore = ProjectStore(service: projectService, defaults: resolvedDefaults)
+
         let hermesClient: any HermesClientProtocol
         if usesMockPairingService {
             hermesClient = MockHermesClient()
@@ -184,6 +201,7 @@ final class AppContainer {
                         await sessionStore.refreshAccessTokenIfNeeded()
                         return await sessionStore.currentAccessToken()
                     },
+                    projectIdProvider: { projectStore.selectedProjectID },
                     allowDemoFallback: false
                 ),
                 fallback: MockHermesClient(),
@@ -226,6 +244,7 @@ final class AppContainer {
             pairingStore: runtimePairingStore,
             hostStore: hostStore,
             chatStore: ChatStore(hermesClient: hermesClient, persistence: persistence),
+            projectStore: projectStore,
             inboxStore: InboxStore(
                 inboxService: inboxService,
                 persistence: persistence,
@@ -297,7 +316,13 @@ final class AppContainer {
         guard sessionStore.state.connectionStatus == .connected else { return }
         await hostStore.refresh()
         lastKnownHostOnline = hostStore.isHostOnline
+        projectStore.setHostScope(hostStore.currentHost?.id)
+        await projectStore.refresh()
         await chatStore.loadConversationIfNeeded()
+        projectStore.alignSelection(
+            with: chatStore.conversation?.projectID,
+            conversationIsEmpty: chatStore.conversation?.messages.isEmpty ?? true
+        )
         await inboxStore.loadInbox()
         await refreshCommandCatalog(force: true)
         await registerStoredPushTokenIfNeeded()
@@ -320,6 +345,8 @@ final class AppContainer {
         await permissionsStore.reloadCapabilities()
         await hostStore.refresh()
         lastKnownHostOnline = hostStore.isHostOnline
+        projectStore.setHostScope(hostStore.currentHost?.id)
+        await projectStore.refresh()
         await refreshCommandCatalog(force: true)
         await registerStoredPushTokenIfNeeded()
         await activateDeviceServicesIfEnabled()
@@ -743,6 +770,7 @@ final class AppContainer {
         chatStore.reset()
         inboxStore.reset()
         hostStore.reset()
+        projectStore.setHostScope(nil)
         lastKnownHostOnline = false
         lastCommandCatalogRefreshAt = nil
         LiveActivityService.endAllActivities()

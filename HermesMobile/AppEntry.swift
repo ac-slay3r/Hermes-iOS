@@ -61,6 +61,7 @@ struct HermesMobileApp: App {
                 .environment(container.pairingStore)
                 .environment(container.hostStore)
                 .environment(container.chatStore)
+                .environment(container.projectStore)
                 .environment(container.inboxStore)
                 .environment(container.permissionsStore)
                 .environment(container.settingsStore)
