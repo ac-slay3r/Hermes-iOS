@@ -186,7 +186,23 @@ struct AdminRoot: View {
                             .foregroundStyle(.secondary)
                     }
                     plannedArea("Configuration & models", systemImage: "slider.horizontal.3")
-                    plannedArea("Profiles & sessions", systemImage: "person.2")
+                    if let overview, let authSession {
+                        NavigationLink {
+                            ProfilesListView(
+                                target: overview.target,
+                                client: HermesAdminClient(transport: URLSessionAdminTransport(
+                                    target: overview.target,
+                                    accessTokenProvider: { authSession.accessToken }
+                                )),
+                                overview: overview
+                            )
+                        } label: {
+                            Label("Profiles & sessions", systemImage: "person.2")
+                        }
+                        .accessibilityIdentifier("admin.profilesSessions")
+                    } else {
+                        plannedArea("Profiles & sessions", systemImage: "person.2", reason: "Locked")
+                    }
                     plannedArea("Skills, tools & MCP", systemImage: "wrench.and.screwdriver")
                     plannedArea("Memory & instructions", systemImage: "brain.head.profile")
                     plannedArea("Automation & connections", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
@@ -209,9 +225,9 @@ struct AdminRoot: View {
     }
 
     @ViewBuilder
-    private func plannedArea(_ title: String, systemImage: String) -> some View {
+    private func plannedArea(_ title: String, systemImage: String, reason: String = "Planned") -> some View {
         LabeledContent {
-            Text("Planned")
+            Text(reason)
                 .font(Design.Typography.footnote)
                 .foregroundStyle(.secondary)
         } label: {

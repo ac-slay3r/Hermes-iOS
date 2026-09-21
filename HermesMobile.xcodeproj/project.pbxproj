@@ -20,6 +20,7 @@
 		BB58B200CB42A5F2584C2AB8 /* HermesAdminClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE61F41C0A39FD9351820878 /* HermesAdminClient.swift */; };
 		0A2DBCC386A1580F17395331 /* AdminAuthentication.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A18F1A712BC30715E7B2B06 /* AdminAuthentication.swift */; };
 		544852055888032601CC3D4D /* AdminTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDDA93B6281FDD8A11099C22 /* AdminTransport.swift */; };
+		FE2103733381502E7CCCDE0F /* ProfilesSessionsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 387DC30FAFCD5C3E03F8A33A /* ProfilesSessionsViews.swift */; };
 		95F7D5F0CCBE43C288DC29FF /* HermesShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = C5A548ED18BF4477BB87636A; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		ED7483B3B121471DAF1D8FBC /* LocalIntakeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9F335828ACD49FD91ACB687; };
 		1C263E03C808494FA94B68A4 /* LocalCaptureIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EAF6D01E1BD4BB2BB6EA5D5; };
@@ -251,6 +252,7 @@
 		CE61F41C0A39FD9351820878 /* HermesAdminClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/Administration/HermesAdminClient.swift; sourceTree = SOURCE_ROOT; };
 		5A18F1A712BC30715E7B2B06 /* AdminAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/Administration/AdminAuthentication.swift; sourceTree = SOURCE_ROOT; };
 		EDDA93B6281FDD8A11099C22 /* AdminTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/Administration/AdminTransport.swift; sourceTree = SOURCE_ROOT; };
+		387DC30FAFCD5C3E03F8A33A /* ProfilesSessionsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMobile/Administration/ProfilesSessionsViews.swift; sourceTree = SOURCE_ROOT; };
 		C5A548ED18BF4477BB87636A /* HermesShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = HermesShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		60C848DCD4554BD7A8DCD2DD /* HermesShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = HermesShareExtension/HermesShareExtension.entitlements; sourceTree = SOURCE_ROOT; };
 		7A553F84958A4979A3D70213 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = HermesShareExtension/Info.plist; sourceTree = SOURCE_ROOT; };
@@ -505,6 +507,7 @@
 				CE61F41C0A39FD9351820878 /* HermesAdminClient.swift */,
 				5A18F1A712BC30715E7B2B06 /* AdminAuthentication.swift */,
 				EDDA93B6281FDD8A11099C22 /* AdminTransport.swift */,
+				387DC30FAFCD5C3E03F8A33A /* ProfilesSessionsViews.swift */,
 				60C848DCD4554BD7A8DCD2DD /* HermesShareExtension.entitlements */,
 				7A553F84958A4979A3D70213 /* Info.plist */,
 				E9F335828ACD49FD91ACB687 /* LocalIntakeTests.swift */,
@@ -1065,6 +1068,7 @@
 				544852055888032601CC3D4D /* AdminTransport.swift in Sources */,
 				389F8536F5172940AD411357 /* AdminEditor.swift in Sources */,
 				852E3063A25EE1864919C69F /* AdminRoot.swift in Sources */,
+				FE2103733381502E7CCCDE0F /* ProfilesSessionsViews.swift in Sources */,
 				48EA1D2ECF55A452C1F6F592 /* AppEntry.swift in Sources */,
 				8E6EB97783EC479A9F858C87 /* LocalCaptureStore.swift in Sources */,
 				14085F4B0DF74932A51F9A94 /* LocalCaptureStorageView.swift in Sources */,

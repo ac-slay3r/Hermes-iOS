@@ -610,6 +610,134 @@ final class AdminClientTests: XCTestCase {
         XCTAssertNil(editor.original)
     }
 
+    // MARK: - Profiles & Sessions (M2 Batch 1, read-only)
+
+    func testReadProfilesDecodesInventoryAndBindsNoMutationPath() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"profiles":[{"name":"default","is_default":true,"model":"gpt","provider":"openai","gateway_running":true,"display_name":"Default","description":"d"},{"name":"work","is_default":false,"model":null,"provider":null,"gateway_running":false,"display_name":"","description":""}]}"#)
+        ])
+
+        let profiles = try await HermesAdminClient(transport: transport).readProfiles(target: target)
+
+        XCTAssertEqual(profiles.count, 2)
+        XCTAssertEqual(profiles[0].name, "default")
+        XCTAssertTrue(profiles[0].isDefault)
+        XCTAssertEqual(profiles[0].model, "gpt")
+        XCTAssertTrue(profiles[0].gatewayRunning)
+        XCTAssertEqual(profiles[1].name, "work")
+        XCTAssertNil(profiles[1].model)
+        XCTAssertEqual(transport.requests.map { $0.url?.path }, ["/dashboard/api/profiles"])
+        XCTAssertEqual(transport.requests[0].httpMethod, "GET")
+    }
+
+    func testReadSessionsAlwaysBindsExplicitProfileQuery() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"sessions":[{"id":"s1","title":"Hello","preview":"hi there","profile":"work","archived":false,"pinned":true,"unread":false,"is_active":true,"started_at":100,"last_active":200}],"total":1,"limit":20,"offset":0}"#)
+        ])
+
+        let page = try await HermesAdminClient(transport: transport).readSessions(target: target)
+
+        XCTAssertEqual(page.total, 1)
+        XCTAssertEqual(page.sessions.first?.id, "s1")
+        XCTAssertTrue(page.sessions.first?.pinned == true)
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/api/sessions")
+        let query = Dictionary(uniqueKeysWithValues: try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems).map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(query["profile"], "work")
+        XCTAssertEqual(query["archived"], "exclude")
+    }
+
+    func testReadSessionsClampsLimitToServerBound() async throws {
+        let target = try AdminTarget(address: "https://example.com", profile: "default")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"sessions":[],"total":0,"limit":100,"offset":0}"#)
+        ])
+
+        _ = try await HermesAdminClient(transport: transport).readSessions(target: target, limit: 5000, offset: -5)
+
+        let request = try XCTUnwrap(transport.requests.first)
+        let query = Dictionary(uniqueKeysWithValues: try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems).map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(query["limit"], "100")
+        XCTAssertEqual(query["offset"], "0")
+    }
+
+    func testSearchSessionsPassesQueryAndProfile() async throws {
+        let target = try AdminTarget(address: "https://example.com", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"sessions":[],"total":0,"limit":20,"offset":0}"#)
+        ])
+
+        _ = try await HermesAdminClient(transport: transport).searchSessions(target: target, query: "deploy")
+
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/api/sessions/search")
+        let query = Dictionary(uniqueKeysWithValues: try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems).map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(query["q"], "deploy")
+        XCTAssertEqual(query["profile"], "work")
+    }
+
+    func testReadSessionDetailRejectsMalformedIdentifierBeforeTransport() async throws {
+        let target = try AdminTarget(address: "https://example.com", profile: "default")
+        let transport = AdminFixtureTransport(responses: [])
+        let client = HermesAdminClient(transport: transport)
+        for id in ["s1\n", "s1\u{2028}", ""] {
+            do {
+                _ = try await client.readSessionDetail(target: target, id: id)
+                XCTFail("Expected invalid session identifier")
+            } catch AdminError.invalidResource {
+                // Expected.
+            }
+        }
+        XCTAssertTrue(transport.requests.isEmpty)
+    }
+
+    func testReadSessionDetailFailsClosedOnProfileMismatch() async throws {
+        let target = try AdminTarget(address: "https://example.com", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"id":"s1","title":"x","profile":"other","archived":false,"pinned":false}"#)
+        ])
+
+        do {
+            _ = try await HermesAdminClient(transport: transport).readSessionDetail(target: target, id: "s1")
+            XCTFail("Expected wrong-target rejection")
+        } catch AdminError.wrongTarget {
+            // Expected: a detail response for a different profile must not be trusted.
+        }
+    }
+
+    func testReadSessionMessagesDecodesEnvelopeAndBareArrayShapes() async throws {
+        let target = try AdminTarget(address: "https://example.com", profile: "default")
+        let envelopeTransport = AdminFixtureTransport(responses: [
+            .json(#"{"messages":[{"id":"m1","role":"user","content":"hi"}]}"#)
+        ])
+        let envelopeMessages = try await HermesAdminClient(transport: envelopeTransport)
+            .readSessionMessages(target: target, id: "s1")
+        XCTAssertEqual(envelopeMessages.first?.role, "user")
+        XCTAssertEqual(envelopeMessages.first?.content, "hi")
+
+        let bareArrayTransport = AdminFixtureTransport(responses: [
+            .json(#"[{"id":"m1","role":"assistant","display_content":"rendered"}]"#)
+        ])
+        let bareMessages = try await HermesAdminClient(transport: bareArrayTransport)
+            .readSessionMessages(target: target, id: "s1")
+        XCTAssertEqual(bareMessages.first?.role, "assistant")
+        XCTAssertEqual(bareMessages.first?.displayContent, "rendered")
+    }
+
+    func testReadSessionMessagesRejectsMalformedIdentifierBeforeTransport() async throws {
+        let target = try AdminTarget(address: "https://example.com", profile: "default")
+        let transport = AdminFixtureTransport(responses: [])
+        do {
+            _ = try await HermesAdminClient(transport: transport).readSessionMessages(target: target, id: "s1\n")
+            XCTFail("Expected invalid session identifier")
+        } catch AdminError.invalidResource {
+            // Expected.
+        }
+        XCTAssertTrue(transport.requests.isEmpty)
+    }
+
     private func makeEditor(_ transport: any AdminTransport) throws -> AdminEditor {
         AdminEditor(client: HermesAdminClient(transport: transport), target: try AdminTarget(address: "https://example.com", profile: "default"))
     }
