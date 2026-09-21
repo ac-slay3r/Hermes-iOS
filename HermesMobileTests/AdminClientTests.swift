@@ -672,7 +672,7 @@ final class AdminClientTests: XCTestCase {
         _ = try await HermesAdminClient(transport: transport).searchSessions(target: target, query: "deploy")
 
         let request = try XCTUnwrap(transport.requests.first)
-        XCTAssertEqual(request.url?.path, "/dashboard/api/sessions/search")
+        XCTAssertEqual(request.url?.path, "/api/sessions/search")
         let query = Dictionary(uniqueKeysWithValues: try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems).map { ($0.name, $0.value ?? "") })
         XCTAssertEqual(query["q"], "deploy")
         XCTAssertEqual(query["profile"], "work")
