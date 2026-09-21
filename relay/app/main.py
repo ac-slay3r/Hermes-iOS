@@ -16,7 +16,7 @@ import json
 from fastapi import Body, Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
-from sqlalchemy import select, update
+from sqlalchemy import exists, select, update
 from sqlalchemy.orm import Session
 
 from .apns import PushResult, create_apns_client
@@ -209,7 +209,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.connector_sessions: dict[str, ConnectorSession] = {}
     app.state.sensor_delivery_waiters: dict[str, asyncio.Future[bool]] = {}
-    app.state.connector_rpc_waiters: dict[str, tuple[str, asyncio.Future[dict]]] = {}
+    app.state.connector_rpc_waiters: dict[str, tuple[str, str, asyncio.Future[dict]]] = {}
     app.state.job_event_queues: dict[str, list[asyncio.Queue]] = {}
     app.state.job_event_buffers: dict[str, list[dict]] = {}
 
@@ -277,7 +277,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return app.state.connector_sessions.get(user_id)
 
     def set_connector_session(user_id: str, session: ConnectorSession) -> None:
+        previous = app.state.connector_sessions.get(user_id)
         app.state.connector_sessions[user_id] = session
+        if previous is not None and previous.connection_nonce != session.connection_nonce:
+            for request_id, (waiter_user_id, waiter_nonce, waiter) in list(app.state.connector_rpc_waiters.items()):
+                if waiter_user_id != user_id or waiter_nonce != previous.connection_nonce:
+                    continue
+                app.state.connector_rpc_waiters.pop(request_id, None)
+                if not waiter.done():
+                    waiter.set_exception(RuntimeError("Hermes host connection was replaced."))
 
     def clear_connector_session(user_id: str | None, connection_nonce: str | None) -> None:
         if user_id is None or connection_nonce is None:
@@ -342,8 +350,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         pending = app.state.connector_rpc_waiters.get(request_id)
         if pending is None:
             return
-        expected_nonce, waiter = pending
+        expected_user_id, expected_nonce, waiter = pending
         if expected_nonce != connection_nonce:
+            return
+        current = connector_session_for_user(expected_user_id)
+        if current is None or current.connection_nonce != expected_nonce:
+            app.state.connector_rpc_waiters.pop(request_id, None)
+            if not waiter.done():
+                waiter.set_exception(RuntimeError("Hermes host connection was replaced."))
             return
         app.state.connector_rpc_waiters.pop(request_id, None)
         if waiter.done():
@@ -366,7 +380,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         request_id = str(uuid.uuid4())
         waiter: asyncio.Future[dict] = asyncio.get_running_loop().create_future()
-        app.state.connector_rpc_waiters[request_id] = (session.connection_nonce, waiter)
+        app.state.connector_rpc_waiters[request_id] = (user_id, session.connection_nonce, waiter)
 
         try:
             await session.websocket.send_json(
@@ -388,6 +402,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except asyncio.TimeoutError as error:
             app.state.connector_rpc_waiters.pop(request_id, None)
             raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Hermes host did not respond in time.") from error
+        except RuntimeError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
 
     async def forward_sensor_payload(
         *,
@@ -1615,6 +1631,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conversation = get_or_create_current_conversation(db, user_id=auth.user.id)
         requested_project_id = str(payload.projectId) if payload.projectId else None
         if requested_project_id:
+            if conversation.project_id is not None and conversation.project_id != requested_project_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This conversation is already bound to a different project.",
+                )
+            if request_settings.hermes_adapter != "connector":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Project-scoped messages require a paired Hermes host.",
+                )
+            validation = await send_connector_rpc(
+                auth.user.id,
+                method="projects.get",
+                params={"projectId": requested_project_id},
+                timeout_seconds=10.0,
+            )
+            validated_project = validation.get("project") or {}
+            if validated_project.get("id") != requested_project_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Hermes host did not validate the selected project.",
+                )
             if conversation.project_id is None:
                 existing_messages = list_conversation_messages(db, conversation_id=conversation.id)
                 if existing_messages:
@@ -1628,11 +1666,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         Conversation.id == conversation.id,
                         Conversation.user_id == auth.user.id,
                         Conversation.project_id.is_(None),
+                        ~exists().where(Message.conversation_id == Conversation.id),
                     )
                     .values(project_id=requested_project_id)
                 )
-                db.commit()
                 if claimed.rowcount != 1:
+                    db.rollback()
                     db.refresh(conversation)
                     if conversation.project_id != requested_project_id:
                         raise HTTPException(
@@ -1640,11 +1679,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             detail="This conversation is already bound to a different project.",
                         )
                 db.refresh(conversation)
-            elif conversation.project_id != requested_project_id:
+            else:
+                claimed = db.execute(
+                    update(Conversation)
+                    .where(
+                        Conversation.id == conversation.id,
+                        Conversation.user_id == auth.user.id,
+                        Conversation.project_id == requested_project_id,
+                    )
+                    .values(updated_at=Conversation.updated_at)
+                )
+                if claimed.rowcount != 1:
+                    db.rollback()
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="This conversation project binding changed. Try again.",
+                    )
+                db.refresh(conversation)
+        else:
+            claimed = db.execute(
+                update(Conversation)
+                .where(
+                    Conversation.id == conversation.id,
+                    Conversation.user_id == auth.user.id,
+                    Conversation.project_id.is_(None),
+                )
+                .values(updated_at=Conversation.updated_at)
+            )
+            if claimed.rowcount != 1:
+                db.rollback()
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="This conversation is already bound to a different project.",
+                    detail="This conversation is bound to a project. Resend with its project selected.",
                 )
+            db.refresh(conversation)
         initial_delivery_status = "pending" if request_settings.hermes_adapter == "connector" else "sent"
         attachments_raw = (
             [att.model_dump() for att in payload.attachments]
@@ -1660,6 +1728,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             client_message_id=client_message_id,
             delivery_status=initial_delivery_status,
             attachments_data=attachments_raw,
+            commit=False,
         )
 
         job = create_message_job(
@@ -1669,7 +1738,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             user_message_id=user_message.id,
             session_id_snapshot=conversation.hermes_session_id,
             project_id=conversation.project_id,
+            commit=False,
         )
+        db.commit()
+        db.refresh(user_message)
+        db.refresh(job)
+        db.refresh(conversation)
 
         if request_settings.hermes_adapter == "connector":
             # Pre-create the event buffer so streaming events are captured

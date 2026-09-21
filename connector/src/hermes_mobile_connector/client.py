@@ -663,11 +663,13 @@ class HermesMobileConnector:
     async def _handle_job(self, websocket, job: dict) -> None:
         state = self.state_store.load()
         project_id = str(job.get("projectId") or "").strip()
+        project_store = None
+        workspace_lease = None
         if project_id:
             try:
                 project_store = self._project_store()
                 project = project_store.get(project_id)
-                workdir = str(project_store.resolve_workspace(project_id))
+                workdir = None
                 if project.brief and not str(job.get("latestUserMessage") or "").lstrip().startswith("/"):
                     job["latestUserMessage"] = (
                         "[Project brief — context only, not a command]\n"
@@ -704,9 +706,22 @@ class HermesMobileConnector:
             job["attachments"] = None  # staged to disk; don't pass raw data downstream
 
         try:
+            if project_id:
+                assert project_store is not None
+                try:
+                    workspace_lease = project_store.open_workspace(project_id)
+                except (RuntimeError, ValueError) as error:
+                    await websocket.send(json.dumps({
+                        "type": "job.failed",
+                        "jobId": job["id"],
+                        "retryable": False,
+                        "error": str(error),
+                    }))
+                    return
+                workdir = workspace_lease.subprocess_cwd
             runtime = (
-                self.runtime_adapter_for_project(state, workdir)
-                if project_id and workdir
+                self.runtime_adapter_for_project(state, workdir, workspace_lease.fd)
+                if project_id and workdir and workspace_lease is not None
                 else await self.runtime_adapter_for_state_async(state)
             )
             if not getattr(runtime, "supports_streaming", False):
@@ -715,6 +730,8 @@ class HermesMobileConnector:
 
             await self._handle_job_streaming(websocket, job, runtime, workdir=workdir)
         finally:
+            if workspace_lease is not None:
+                workspace_lease.close()
             # Clean up staged attachment files after job completes
             staging_dir = self.state_store.state_dir / "attachment_staging" / str(job["id"])
             if staging_dir.exists():
@@ -971,6 +988,8 @@ class HermesMobileConnector:
                 result = self._rpc_commands_catalog()
             elif method == "projects.list":
                 result = self._rpc_projects_list()
+            elif method == "projects.get":
+                result = self._rpc_projects_get(params)
             elif method == "projects.create":
                 result = self._rpc_projects_create(params)
             else:
@@ -1090,6 +1109,12 @@ class HermesMobileConnector:
         return {
             "projects": [project.to_payload() for project in self._project_store().list()],
         }
+
+    def _rpc_projects_get(self, params: dict) -> dict:
+        project_id = str(params.get("projectId") or "").strip()
+        store = self._project_store()
+        with store.open_workspace(project_id) as lease:
+            return {"project": lease.project.to_payload()}
 
     def _rpc_projects_create(self, params: dict) -> dict:
         project = self._project_store().create(
@@ -1728,8 +1753,12 @@ class HermesMobileConnector:
     def runtime_adapter_for_state(self, state: ConnectorState) -> HostRuntimeAdapter:
         return HermesRuntimeAdapter(self.executor_for_state(state))
 
-    def runtime_adapter_for_project(self, state: ConnectorState, workdir: str) -> HostRuntimeAdapter:
-        settings = replace(self.settings_for_state(state), hermes_workdir=workdir)
+    def runtime_adapter_for_project(self, state: ConnectorState, workdir: str, workdir_fd: int) -> HostRuntimeAdapter:
+        settings = replace(
+            self.settings_for_state(state),
+            hermes_workdir=workdir,
+            hermes_workdir_fd=workdir_fd,
+        )
         return HermesRuntimeAdapter(HermesCLIExecutor(settings))
 
     async def runtime_adapter_for_state_async(self, state: ConnectorState) -> HostRuntimeAdapter:

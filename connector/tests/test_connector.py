@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
+import subprocess
 import sys
 
 from hermes_mobile_connector.client import HermesMobileConnector
@@ -49,6 +51,38 @@ def make_executor() -> HermesCLIExecutor:
             hermes_history_limit=20,
         )
     )
+
+
+def test_cli_executor_preserves_workspace_directory_descriptor(monkeypatch, tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    descriptor = os.open(workspace, os.O_RDONLY | os.O_DIRECTORY)
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    executor = HermesCLIExecutor(
+        ConnectorHermesSettings(
+            hermes_command="hermes",
+            hermes_workdir=f"/proc/self/fd/{descriptor}",
+            hermes_provider=None,
+            hermes_model=None,
+            hermes_toolsets=None,
+            hermes_source="tool",
+            hermes_history_limit=20,
+            hermes_workdir_fd=descriptor,
+        )
+    )
+    try:
+        executor._run_command(["hermes", "chat"])
+    finally:
+        os.close(descriptor)
+
+    assert captured["cwd"] == f"/proc/self/fd/{descriptor}"
+    assert captured["pass_fds"] == (descriptor,)
 
 
 def test_decode_host_setup_code_roundtrip():

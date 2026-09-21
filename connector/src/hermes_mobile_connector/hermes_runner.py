@@ -32,6 +32,7 @@ class ConnectorHermesSettings:
     hermes_toolsets: str | None
     hermes_source: str
     hermes_history_limit: int
+    hermes_workdir_fd: int | None = None
 
     @classmethod
     def from_env(cls) -> "ConnectorHermesSettings":
@@ -162,9 +163,11 @@ class HermesCLIExecutor:
         return command
 
     def _run_command(self, command: list[str]) -> CLIHermesResponse:
+        pass_fds = (self.settings.hermes_workdir_fd,) if self.settings.hermes_workdir_fd is not None else ()
         completed = subprocess.run(
             command,
             cwd=self.settings.hermes_workdir or None,
+            pass_fds=pass_fds,
             capture_output=True,
             text=True,
             check=False,

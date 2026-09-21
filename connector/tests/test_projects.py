@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -42,6 +43,7 @@ class CanonicalProjectsRunner:
                 "description": payload["brief"],
                 "primary_path": payload["workspacePath"],
                 "folders": [{"path": payload["workspacePath"], "is_primary": True}],
+                "pinnedCommandIds": list(payload.get("pinnedCommandIds", [])),
             }
             self.projects.append(project)
             return {"project": project}
@@ -67,7 +69,16 @@ def test_project_store_adapts_canonical_hermes_projects_and_persists_only_pins(t
     assert store.list() == [project]
     assert store.resolve_workspace(project.id) == workspace.resolve()
     assert not (tmp_path / "connector-state" / "projects.json").exists()
-    assert (tmp_path / "connector-state" / "project-command-pins.json").stat().st_mode & 0o777 == 0o600
+    assert not (tmp_path / "connector-state" / "project-command-pins.json").exists()
+
+
+def test_project_and_pins_share_one_canonical_database_transaction() -> None:
+    source = Path(__file__).parents[1] / "src/hermes_mobile_connector/projects.py"
+    text = source.read_text(encoding="utf-8")
+    transaction = text.split('with pdb.write_txn(conn):', 1)[1].split('project = pdb.get_project', 1)[0]
+    assert 'INSERT INTO projects' in transaction
+    assert 'INSERT INTO project_folders' in transaction
+    assert 'INSERT INTO mobile_project_pins' in transaction
 
 
 def test_project_store_rejects_unsafe_or_ambiguous_workspaces(tmp_path: Path) -> None:
@@ -85,6 +96,25 @@ def test_project_store_rejects_unsafe_or_ambiguous_workspaces(tmp_path: Path) ->
         store.create(name="Duplicate", workspace_path=str(workspace), brief="", pinned_command_ids=[])
     with pytest.raises(ValueError, match="Unknown project"):
         store.resolve_workspace("missing-project")
+
+
+def test_workspace_lease_keeps_validated_directory_after_path_replacement(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    runner = CanonicalProjectsRunner()
+    store = HostProjectStore(tmp_path / "connector-state", allowed_roots=[tmp_path], runner=runner)
+    project = store.create(name="Stable", workspace_path=str(workspace), brief="", pinned_command_ids=[])
+
+    with store.open_workspace(project.id) as lease:
+        original_inode = os.fstat(lease.fd).st_ino
+        workspace.rename(tmp_path / "workspace-original")
+        workspace.symlink_to(outside, target_is_directory=True)
+
+        assert os.fstat(lease.fd).st_ino == original_inode
+        assert os.stat(workspace).st_ino != original_inode
+        assert lease.subprocess_cwd.endswith(str(lease.fd))
 
 
 def test_connector_project_rpc_creates_then_lists_projects(monkeypatch, tmp_path: Path) -> None:
@@ -158,8 +188,9 @@ def test_project_scoped_job_uses_host_resolved_workspace(monkeypatch, tmp_path: 
     class StreamingRuntime:
         supports_streaming = True
 
-    def fake_runtime(_state, workdir):
+    def fake_runtime(_state, workdir, workdir_fd):
         captured["resolved_workdir"] = workdir
+        captured["workdir_fd"] = workdir_fd
         return StreamingRuntime()
 
     async def fake_handle(_websocket, _job, _runtime, *, workdir=None):
@@ -179,8 +210,9 @@ def test_project_scoped_job_uses_host_resolved_workspace(monkeypatch, tmp_path: 
         )
     )
 
-    assert captured["workdir"] == str(workspace.resolve())
-    assert captured["resolved_workdir"] == str(workspace.resolve())
+    assert captured["workdir"].startswith(("/proc/self/fd/", "/dev/fd/"))
+    assert captured["resolved_workdir"] == captured["workdir"]
+    assert isinstance(captured["workdir_fd"], int)
 
 
 def test_unknown_project_job_fails_closed_without_default_workdir(monkeypatch, tmp_path: Path) -> None:

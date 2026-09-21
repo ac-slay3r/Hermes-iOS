@@ -1030,6 +1030,7 @@ def append_message(
     source: str | None = None,
     created_at_override: datetime | None = None,
     attachments_data: list[dict] | None = None,
+    commit: bool = True,
 ) -> Message:
     message = Message(
         conversation_id=conversation.id,
@@ -1046,7 +1047,10 @@ def append_message(
     conversation.last_message_at = utcnow()
     conversation.updated_at = utcnow()
     db.add(message)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(message)
     db.refresh(conversation)
     return message
@@ -1067,6 +1071,7 @@ def create_message_job(
     user_message_id: str,
     session_id_snapshot: str | None,
     project_id: str | None = None,
+    commit: bool = True,
 ) -> MessageJob:
     job = MessageJob(
         user_id=user_id,
@@ -1078,7 +1083,10 @@ def create_message_job(
         retryable=True,
     )
     db.add(job)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(job)
     return job
 

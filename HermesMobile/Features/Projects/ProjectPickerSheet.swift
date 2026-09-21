@@ -40,13 +40,14 @@ struct ProjectPickerSheet: View {
                             }
                         }
                         ForEach(projectStore.projects) { project in
+                            let isSelected = project.id == projectStore.selectedProjectID
                             Button {
                                 onSelect(project)
                                 dismiss()
                             } label: {
                                 HStack(spacing: Design.Spacing.sm) {
-                                    Image(systemName: project.id == projectStore.selectedProjectID ? "checkmark.circle.fill" : "folder")
-                                        .foregroundStyle(project.id == projectStore.selectedProjectID ? Design.Brand.accent : Design.Colors.secondaryForeground)
+                                    Image(systemName: isSelected ? "checkmark.circle.fill" : "folder")
+                                        .foregroundStyle(isSelected ? Design.Brand.accent : Design.Colors.secondaryForeground)
                                     VStack(alignment: .leading, spacing: Design.Spacing.xxxs) {
                                         Text(project.name)
                                             .foregroundStyle(Design.Colors.foreground)
@@ -63,6 +64,7 @@ struct ProjectPickerSheet: View {
                                     }
                                 }
                             }
+                            .accessibilityValue(isSelected ? "Selected" : "Not selected")
                         }
                     }
                 }

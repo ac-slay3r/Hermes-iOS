@@ -158,7 +158,7 @@ struct ChatScreen: View {
                 GlassCircleButton(icon: "waveform", accessibilityLabel: "Start voice mode") {
                     router.isVoiceOverlayPresented = true
                 }
-                GlassCircleButton(icon: "folder", accessibilityLabel: "Choose project") {
+                GlassCircleButton(icon: "folder", accessibilityLabel: projectPickerAccessibilityLabel) {
                     showProjectPicker = true
                 }
                 GlassCircleButton(icon: "gearshape", accessibilityLabel: "Open settings") {
@@ -166,6 +166,13 @@ struct ChatScreen: View {
                 }
             }
         }
+    }
+
+    private var projectPickerAccessibilityLabel: String {
+        if let project = container.projectStore.selectedProject {
+            return "Choose project. Current project: \(project.name)."
+        }
+        return "Choose project. No project selected."
     }
 
     @State private var showContextPopover = false

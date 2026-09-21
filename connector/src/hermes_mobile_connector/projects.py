@@ -31,12 +31,31 @@ class HostProject:
         }
 
 
+@dataclass
+class WorkspaceLease:
+    project: HostProject
+    canonical_path: Path
+    fd: int
+    subprocess_cwd: str
+
+    def close(self) -> None:
+        if self.fd >= 0:
+            os.close(self.fd)
+            self.fd = -1
+
+    def __enter__(self) -> "WorkspaceLease":
+        return self
+
+    def __exit__(self, _exc_type, _exc, _traceback) -> None:
+        self.close()
+
+
 class HostProjectStore:
     """Adapter over Hermes's canonical per-profile projects.db.
 
     Project definitions stay in Hermes Agent so Desktop and iOS share one project
-    inventory. Only iOS command pins are stored beside connector state, keyed by
-    canonical Hermes project ID.
+    inventory. Mobile command pins live in an extension table in the same database,
+    so project creation and its organization metadata commit atomically.
     """
 
     def __init__(
@@ -49,7 +68,6 @@ class HostProjectStore:
     ) -> None:
         self.state_dir = state_dir.expanduser()
         self.hermes_home = (hermes_home or Path(os.getenv("HERMES_HOME", "~/.hermes"))).expanduser()
-        self.pins_path = self.state_dir / "project-command-pins.json"
         self._injected_runner = runner
         configured = os.getenv("HERMES_PROJECT_ROOTS", "")
         roots = allowed_roots if allowed_roots is not None else [Path(value) for value in configured.split(os.pathsep) if value]
@@ -57,8 +75,10 @@ class HostProjectStore:
 
     def list(self) -> list[HostProject]:
         result = self._run("list", {})
-        pins = self._load_pins()
-        projects = [self._from_canonical(item, pins.get(str(item.get("id")), [])) for item in result.get("projects", [])]
+        projects = [
+            self._from_canonical(item, [str(value) for value in item.get("pinnedCommandIds", [])])
+            for item in result.get("projects", [])
+        ]
         return sorted(projects, key=lambda project: project.name.casefold())
 
     def create(
@@ -85,13 +105,13 @@ class HostProjectStore:
         if len(normalized_brief) > 4_000:
             raise ValueError("Project brief must not exceed 4000 characters.")
         normalized_pins = self._normalize_pins(pinned_command_ids)
-
         result = self._run(
             "create",
             {
                 "name": normalized_name,
                 "workspacePath": str(canonical_workspace),
                 "brief": normalized_brief,
+                "pinnedCommandIds": normalized_pins,
             },
         )
         canonical = result.get("project")
@@ -100,10 +120,10 @@ class HostProjectStore:
         project_id = str(canonical.get("id") or "")
         if not _PROJECT_ID_PATTERN.fullmatch(project_id):
             raise RuntimeError("Hermes returned an invalid project identifier.")
-        pins = self._load_pins()
-        pins[project_id] = normalized_pins
-        self._save_pins(pins)
-        return self._from_canonical(canonical, normalized_pins)
+        return self._from_canonical(
+            canonical,
+            [str(value) for value in canonical.get("pinnedCommandIds", [])],
+        )
 
     def get(self, project_id: str) -> HostProject:
         if not _PROJECT_ID_PATTERN.fullmatch(project_id):
@@ -114,12 +134,39 @@ class HostProjectStore:
         return project
 
     def resolve_workspace(self, project_id: str) -> Path:
+        with self.open_workspace(project_id) as lease:
+            return lease.canonical_path
+
+    def open_workspace(self, project_id: str) -> WorkspaceLease:
         project = self.get(project_id)
         workspace = Path(project.workspace_path).resolve()
         if not workspace.is_dir():
             raise ValueError("Project workspace is no longer an existing directory.")
         self._require_allowed_workspace(workspace)
-        return workspace
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            fd = os.open(workspace, flags)
+        except OSError as error:
+            raise ValueError("Project workspace could not be opened safely.") from error
+        try:
+            fd_path = Path(f"/proc/self/fd/{fd}")
+            if not fd_path.exists():
+                fd_path = Path(f"/dev/fd/{fd}")
+            opened_path = fd_path.resolve()
+            self._require_allowed_workspace(opened_path)
+            opened_stat = os.fstat(fd)
+            current_stat = os.stat(workspace, follow_symlinks=False)
+            if (opened_stat.st_dev, opened_stat.st_ino) != (current_stat.st_dev, current_stat.st_ino):
+                raise ValueError("Project workspace changed during authorization.")
+            return WorkspaceLease(
+                project=project,
+                canonical_path=opened_path,
+                fd=fd,
+                subprocess_cwd=str(fd_path),
+            )
+        except Exception:
+            os.close(fd)
+            raise
 
     def _require_allowed_workspace(self, workspace: Path) -> None:
         if not self.allowed_roots:
@@ -137,22 +184,65 @@ class HostProjectStore:
             raise RuntimeError("Hermes Agent project support is unavailable on this host.")
 
         script = r'''
-import json, os, sys
+import json, os, secrets
 from hermes_cli import projects_db as pdb
 request = json.loads(os.environ["HERMES_MOBILE_PROJECT_REQUEST"])
 with pdb.connect_closing() as conn:
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS mobile_project_pins ("
+        "project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+        "command_id TEXT NOT NULL, position INTEGER NOT NULL, "
+        "PRIMARY KEY(project_id, command_id))"
+    )
+    conn.commit()
+
+    def payload(project):
+        item = project.to_dict()
+        item["pinnedCommandIds"] = [
+            row[0] for row in conn.execute(
+                "SELECT command_id FROM mobile_project_pins WHERE project_id = ? ORDER BY position ASC",
+                (project.id,),
+            ).fetchall()
+        ]
+        return item
+
     if request["operation"] == "list":
-        result = {"projects": [p.to_dict() for p in pdb.list_projects(conn, include_archived=False)]}
+        result = {"projects": [payload(p) for p in pdb.list_projects(conn, include_archived=False)]}
     elif request["operation"] == "create":
         body = request["payload"]
-        project_id = pdb.create_project(
-            conn,
-            name=body["name"],
-            primary_path=body["workspacePath"],
-            description=body.get("brief") or None,
-        )
+        name = str(body["name"]).strip()
+        primary = pdb._normalize_path(body["workspacePath"])
+        existing = pdb.find_by_primary_path(conn, primary)
+        if existing is not None:
+            raise ValueError(
+                f"folder already belongs to project '{existing.slug}' ({existing.id}); "
+                "switch to it instead of creating a duplicate"
+            )
+        project_id = "p_" + secrets.token_hex(4)
+        now = pdb._now()
+        with pdb.write_txn(conn):
+            conn.execute(
+                "INSERT INTO projects (id, slug, name, description, icon, color, board_slug, primary_path, created_at, archived) "
+                "VALUES (?, ?, ?, ?, NULL, NULL, NULL, ?, ?, 0)",
+                (
+                    project_id,
+                    pdb._unique_slug(conn, pdb._slugify(name)),
+                    name,
+                    body.get("brief") or None,
+                    primary,
+                    now,
+                ),
+            )
+            conn.execute(
+                "INSERT INTO project_folders (project_id, path, label, is_primary, added_at) VALUES (?, ?, NULL, 1, ?)",
+                (project_id, primary, now),
+            )
+            conn.executemany(
+                "INSERT INTO mobile_project_pins (project_id, command_id, position) VALUES (?, ?, ?)",
+                [(project_id, command_id, position) for position, command_id in enumerate(body.get("pinnedCommandIds", []))],
+            )
         project = pdb.get_project(conn, project_id)
-        result = {"project": project.to_dict() if project else None}
+        result = {"project": payload(project) if project else None}
     else:
         raise ValueError("Unsupported project operation")
 print(json.dumps(result, separators=(",", ":")))
@@ -200,27 +290,3 @@ print(json.dumps(result, separators=(",", ":")))
         if len(result) > 24:
             raise ValueError("A project may pin at most 24 commands.")
         return result
-
-    def _load_pins(self) -> dict[str, list[str]]:
-        if not self.pins_path.exists():
-            return {}
-        raw = json.loads(self.pins_path.read_text(encoding="utf-8"))
-        return {
-            str(project_id): self._normalize_pins([str(value) for value in values])
-            for project_id, values in raw.items()
-            if _PROJECT_ID_PATTERN.fullmatch(str(project_id)) and isinstance(values, list)
-        }
-
-    def _save_pins(self, pins: dict[str, list[str]]) -> None:
-        self.state_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            os.chmod(self.state_dir, 0o700)
-        except PermissionError:
-            pass
-        temporary_path = self.pins_path.with_suffix(".tmp")
-        temporary_path.write_text(json.dumps(pins, indent=2, sort_keys=True), encoding="utf-8")
-        os.replace(temporary_path, self.pins_path)
-        try:
-            os.chmod(self.pins_path, 0o600)
-        except PermissionError:
-            pass

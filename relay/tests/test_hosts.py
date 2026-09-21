@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import uuid
 from threading import Thread
 
 from fastapi.testclient import TestClient
 
+import app.main as relay_main
 from app.config import Settings
 from app.main import create_app
 from app.models import VoiceTurn
@@ -1219,6 +1221,18 @@ def test_project_id_is_bound_to_connector_job_payload(tmp_path):
 
             thread = Thread(target=send_message)
             thread.start()
+            validation_rpc = websocket.receive_json()
+            assert validation_rpc["type"] == "rpc.request"
+            assert validation_rpc["method"] == "projects.get"
+            assert validation_rpc["params"]["projectId"] == "p_11111111"
+            websocket.send_json(
+                {
+                    "type": "rpc.response",
+                    "requestId": validation_rpc["requestId"],
+                    "success": True,
+                    "result": {"project": {"id": "p_11111111"}},
+                }
+            )
             job = websocket.receive_json()["job"]
             assert job["projectId"] == "p_11111111"
             websocket.send_json(
@@ -1239,3 +1253,193 @@ def test_project_id_is_bound_to_connector_job_payload(tmp_path):
             )
             assert switched.status_code == 409
             assert "different project" in switched.json()["detail"]
+
+            unscoped = client.post(
+                "/v1/messages",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={"text": "Do not lose the project binding"},
+            )
+            assert unscoped.status_code == 409
+            assert "bound to a project" in unscoped.json()["detail"]
+
+
+def test_unknown_project_is_rejected_before_conversation_binding(tmp_path):
+    database_path = tmp_path / "relay-hosts.db"
+    with build_client(tmp_path) as client:
+        connector_data = setup_connector(client)
+        pairing_code = create_phone_pairing_code(client, connector_data["connectorCredential"])
+        access_token = redeem_phone(
+            client,
+            pairing_code["displayCode"],
+            str(uuid.uuid4()),
+        )["auth"]["accessToken"]
+
+        with client.websocket_connect(
+            "/v1/hosts/ws",
+            headers={"Authorization": f"Bearer {connector_data['connectorCredential']}"},
+        ) as websocket:
+            websocket.send_json(
+                {
+                    "type": "hello",
+                    "connector": {
+                        "platform": "macos",
+                        "hostname": "test-host",
+                        "connectorVersion": "0.1.0",
+                        "hermesCommand": "/usr/local/bin/hermes",
+                        "hermesVersion": "hermes 1.2.3",
+                    },
+                }
+            )
+            assert websocket.receive_json()["type"] == "ready"
+            response: dict = {}
+
+            def send_message() -> None:
+                response["payload"] = client.post(
+                    "/v1/messages",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    json={"text": "Do not bind", "projectId": "p_deadbeef"},
+                )
+
+            thread = Thread(target=send_message)
+            thread.start()
+            validation_rpc = websocket.receive_json()
+            assert validation_rpc["method"] == "projects.get"
+            websocket.send_json(
+                {
+                    "type": "rpc.response",
+                    "requestId": validation_rpc["requestId"],
+                    "success": False,
+                    "error": "Unknown project identifier.",
+                }
+            )
+            thread.join(timeout=5)
+
+        assert response["payload"].status_code == 409
+        with sqlite3.connect(database_path) as connection:
+            assert connection.execute(
+                "SELECT project_id FROM conversations WHERE is_archived = 0"
+            ).fetchone()[0] is None
+            assert connection.execute("SELECT COUNT(*) FROM messages").fetchone()[0] == 0
+
+
+def test_replaced_connector_cannot_complete_project_validation(tmp_path):
+    with build_client(tmp_path) as client:
+        connector_data = setup_connector(client)
+        pairing_code = create_phone_pairing_code(client, connector_data["connectorCredential"])
+        access_token = redeem_phone(
+            client,
+            pairing_code["displayCode"],
+            str(uuid.uuid4()),
+        )["auth"]["accessToken"]
+
+        headers = {"Authorization": f"Bearer {connector_data['connectorCredential']}"}
+        with client.websocket_connect("/v1/hosts/ws", headers=headers) as old_socket:
+            old_socket.send_json({
+                "type": "hello",
+                "connector": {
+                    "platform": "macos",
+                    "hostname": "old-host",
+                    "connectorVersion": "0.1.0",
+                    "hermesCommand": "/usr/local/bin/hermes",
+                    "hermesVersion": "hermes 1.2.3",
+                },
+            })
+            assert old_socket.receive_json()["type"] == "ready"
+            response: dict = {}
+
+            def send_message() -> None:
+                response["payload"] = client.post(
+                    "/v1/messages",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    json={"text": "Validate safely", "projectId": "p_11111111"},
+                )
+
+            thread = Thread(target=send_message)
+            thread.start()
+            validation_rpc = old_socket.receive_json()
+            assert validation_rpc["method"] == "projects.get"
+
+            with client.websocket_connect("/v1/hosts/ws", headers=headers) as replacement_socket:
+                replacement_socket.send_json({
+                    "type": "hello",
+                    "connector": {
+                        "platform": "macos",
+                        "hostname": "replacement-host",
+                        "connectorVersion": "0.1.0",
+                        "hermesCommand": "/usr/local/bin/hermes",
+                        "hermesVersion": "hermes 1.2.3",
+                    },
+                })
+                assert replacement_socket.receive_json()["type"] == "ready"
+                old_socket.send_json({
+                    "type": "rpc.response",
+                    "requestId": validation_rpc["requestId"],
+                    "success": True,
+                    "result": {"project": {"id": "p_11111111"}},
+                })
+                thread.join(timeout=5)
+
+        assert response["payload"].status_code == 409
+
+
+def test_project_binding_message_and_job_roll_back_together(monkeypatch, tmp_path):
+    database_path = tmp_path / "relay-hosts.db"
+    with build_client(tmp_path) as client:
+        connector_data = setup_connector(client)
+        pairing_code = create_phone_pairing_code(client, connector_data["connectorCredential"])
+        access_token = redeem_phone(
+            client,
+            pairing_code["displayCode"],
+            str(uuid.uuid4()),
+        )["auth"]["accessToken"]
+
+        with client.websocket_connect(
+            "/v1/hosts/ws",
+            headers={"Authorization": f"Bearer {connector_data['connectorCredential']}"},
+        ) as websocket:
+            websocket.send_json({
+                "type": "hello",
+                "connector": {
+                    "platform": "macos",
+                    "hostname": "test-host",
+                    "connectorVersion": "0.1.0",
+                    "hermesCommand": "/usr/local/bin/hermes",
+                    "hermesVersion": "hermes 1.2.3",
+                },
+            })
+            assert websocket.receive_json()["type"] == "ready"
+            monkeypatch.setattr(
+                relay_main,
+                "create_message_job",
+                lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("injected job failure")),
+            )
+            outcome: dict = {}
+
+            def send_message() -> None:
+                try:
+                    client.post(
+                        "/v1/messages",
+                        headers={"Authorization": f"Bearer {access_token}"},
+                        json={"text": "Must be atomic", "projectId": "p_11111111"},
+                    )
+                except RuntimeError as error:
+                    outcome["error"] = str(error)
+
+            thread = Thread(target=send_message)
+            thread.start()
+            validation_rpc = websocket.receive_json()
+            websocket.send_json({
+                "type": "rpc.response",
+                "requestId": validation_rpc["requestId"],
+                "success": True,
+                "result": {"project": {"id": "p_11111111"}},
+            })
+            thread.join(timeout=5)
+
+        assert outcome["error"] == "injected job failure"
+        with sqlite3.connect(database_path) as connection:
+            assert connection.execute(
+                "SELECT project_id FROM conversations WHERE is_archived = 0"
+            ).fetchone()[0] is None
+            assert connection.execute("SELECT COUNT(*) FROM messages").fetchone()[0] == 0
+            assert connection.execute("SELECT COUNT(*) FROM message_jobs").fetchone()[0] == 0
