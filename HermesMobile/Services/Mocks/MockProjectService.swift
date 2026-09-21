@@ -19,7 +19,7 @@ final class MockProjectService: ProjectServiceProtocol {
         pinnedCommandIds: [String]
     ) async throws -> HostProject {
         let project = HostProject(
-            id: UUID(),
+            id: "p_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(8).lowercased())",
             name: name,
             workspacePath: workspacePath,
             brief: brief,

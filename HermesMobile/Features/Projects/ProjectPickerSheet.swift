@@ -121,7 +121,7 @@ private struct ProjectCreateSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Project") {
+                Section {
                     TextField("Name", text: $name)
                     TextField("Exact workspace path", text: $workspacePath)
                         .textInputAutocapitalization(.never)
@@ -129,11 +129,13 @@ private struct ProjectCreateSheet: View {
                         .font(.system(.body, design: .monospaced))
                     TextField("Brief and desired outcome", text: $brief, axis: .vertical)
                         .lineLimit(3...8)
+                } header: {
+                    Text("Project")
                 } footer: {
                     Text("The paired host validates and canonicalizes this directory. Hermes runs project-scoped work from that exact location.")
                 }
 
-                Section("Pinned commands") {
+                Section {
                     ForEach(availableCommands) { command in
                         Toggle(isOn: pinBinding(command.id)) {
                             VStack(alignment: .leading, spacing: Design.Spacing.xxxs) {
@@ -145,6 +147,8 @@ private struct ProjectCreateSheet: View {
                             }
                         }
                     }
+                } header: {
+                    Text("Pinned commands")
                 } footer: {
                     Text("Pins organize the command palette. They do not bypass Hermes approvals or command authorization.")
                 }
