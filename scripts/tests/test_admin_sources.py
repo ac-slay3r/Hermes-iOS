@@ -169,6 +169,23 @@ class AdminSourceTests(unittest.TestCase):
             self.assertNotIn(forbidden, text)
         self.assertIn("UnavailableAdminTransport", text)
 
+    def test_last_reviewed_target_persists_address_and_profile_only(self):
+        root = (ROOT / "HermesMobile/Administration/AdminRoot.swift").read_text()
+        protocol_text = (ROOT / "HermesMobile/Services/Protocols/AdminTargetPersistenceProtocol.swift").read_text()
+        persistence = (ROOT / "HermesMobile/Services/Support/UserDefaultsAdminTargetPersistence.swift").read_text()
+        for token in [
+            "targetPersistence.saveLastAdminTarget(address: address, profile: profile)",
+            "private func restoreLastTarget()",
+            "guard address.isEmpty, let saved = targetPersistence.loadLastAdminTarget()",
+        ]:
+            self.assertIn(token, root)
+        self.assertIn("func loadLastAdminTarget() -> (address: String, profile: String)?", protocol_text)
+        self.assertIn("func saveLastAdminTarget(address: String, profile: String)", protocol_text)
+        # Only the plain host/profile strings persist here; credentials remain Keychain-only
+        # via AdminAuthentication.swift's KeychainAdminCredentialStore, untouched by this file.
+        for forbidden in ["access_token", "accessToken", "refresh_token", "refreshToken", "Keychain"]:
+            self.assertNotIn(forbidden, persistence)
+
 
 if __name__ == "__main__":
     unittest.main()

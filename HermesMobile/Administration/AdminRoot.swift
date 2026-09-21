@@ -97,6 +97,11 @@ struct AdminRoot: View {
     @State private var signingIn = false
     @State private var refreshingOverview = false
     @State private var connectionMessage: String?
+    private let targetPersistence: any AdminTargetPersistenceProtocol
+
+    init(targetPersistence: any AdminTargetPersistenceProtocol = .liveAdminTargetPersistence) {
+        self.targetPersistence = targetPersistence
+    }
 
     var body: some View {
         NavigationStack {
@@ -126,6 +131,7 @@ struct AdminRoot: View {
                             overview = nil
                             authSession = nil
                             connectionMessage = nil
+                            targetPersistence.saveLastAdminTarget(address: address, profile: profile)
                         } catch {
                             target = nil
                             invalidTarget = true
@@ -186,7 +192,23 @@ struct AdminRoot: View {
                             .foregroundStyle(.secondary)
                     }
                     plannedArea("Configuration & models", systemImage: "slider.horizontal.3")
-                    plannedArea("Profiles & sessions", systemImage: "person.2")
+                    if let overview, let authSession {
+                        NavigationLink {
+                            ProfilesListView(
+                                target: overview.target,
+                                client: HermesAdminClient(transport: URLSessionAdminTransport(
+                                    target: overview.target,
+                                    accessTokenProvider: { authSession.accessToken }
+                                )),
+                                overview: overview
+                            )
+                        } label: {
+                            Label("Profiles & sessions", systemImage: "person.2")
+                        }
+                        .accessibilityIdentifier("admin.profilesSessions")
+                    } else {
+                        plannedArea("Profiles & sessions", systemImage: "person.2", reason: "Locked")
+                    }
                     plannedArea("Skills, tools & MCP", systemImage: "wrench.and.screwdriver")
                     plannedArea("Memory & instructions", systemImage: "brain.head.profile")
                     plannedArea("Automation & connections", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
@@ -204,14 +226,24 @@ struct AdminRoot: View {
             .navigationTitle("Hermes")
             .onChange(of: address) { _, _ in resetSelection() }
             .onChange(of: profile) { _, _ in resetSelection() }
+            .task { restoreLastTarget() }
         }
         .preferredColorScheme(.dark)
     }
 
+    /// Restores only the last-reviewed, non-secret address/profile fields so the user
+    /// does not retype them every launch. Does not restore `target` or attempt sign-in;
+    /// the user still explicitly reviews and authenticates, matching existing behavior.
+    private func restoreLastTarget() {
+        guard address.isEmpty, let saved = targetPersistence.loadLastAdminTarget() else { return }
+        address = saved.address
+        profile = saved.profile
+    }
+
     @ViewBuilder
-    private func plannedArea(_ title: String, systemImage: String) -> some View {
+    private func plannedArea(_ title: String, systemImage: String, reason: String = "Planned") -> some View {
         LabeledContent {
-            Text("Planned")
+            Text(reason)
                 .font(Design.Typography.footnote)
                 .foregroundStyle(.secondary)
         } label: {

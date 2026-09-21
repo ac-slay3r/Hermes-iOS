@@ -62,6 +62,7 @@ The general dashboard configuration response is not a proven secret-safe project
 - Live dashboard authentication and overview: verified by the owner from TestFlight build 22 against `https://dashboard.n0thing.cool`.
 - Combined Dashboard/Chat/Device source: 102 source/project checks, 70 relay tests, and 88 connector tests pass locally; native compilation passes, while corrected native XCTest/UI behavior and signed delivery remain pending for the next exact-SHA run.
 - Native dashboard write/readback: not run and not authorized by this scope decision.
+- **M1 gate — closed 2026-09-21**: TestFlight build 27 (run #27, commit `608b06e`, CI green through `f3468b3`) sign-in verified live by the owner against `https://dashboard.n0thing.cool`, which advertises `auth_flows: ["cookie","native_pkce","native_ios_pkce"]`. Formal negative-case device testing (wrong-host, wrong-profile, expired-token, redirect-rejection) was explicitly deferred by owner decision and remains unverified — do not claim it as tested.
 
 ## Signing and retained targets
 

@@ -99,6 +99,134 @@ struct AdminProfileContext: Equatable, Decodable, Sendable {
     let current: String
 }
 
+/// One entry from `GET /api/profiles`. Read-only inventory row; no mutation fields accepted.
+struct AdminProfileSummary: Equatable, Decodable, Sendable, Identifiable {
+    let name: String
+    let isDefault: Bool
+    let model: String?
+    let provider: String?
+    let gatewayRunning: Bool
+    let displayName: String
+    let description: String
+    var id: String { name }
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case isDefault = "is_default"
+        case model, provider
+        case gatewayRunning = "gateway_running"
+        case displayName = "display_name"
+        case description
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        name = try values.decode(String.self, forKey: .name)
+        isDefault = try values.decodeIfPresent(Bool.self, forKey: .isDefault) ?? false
+        model = try values.decodeIfPresent(String.self, forKey: .model)
+        provider = try values.decodeIfPresent(String.self, forKey: .provider)
+        gatewayRunning = try values.decodeIfPresent(Bool.self, forKey: .gatewayRunning) ?? false
+        displayName = try values.decodeIfPresent(String.self, forKey: .displayName) ?? ""
+        description = try values.decodeIfPresent(String.self, forKey: .description) ?? ""
+    }
+}
+
+/// One row from `GET /api/sessions`. Preview/list projection only; never carries full transcript content.
+struct AdminSessionSummary: Equatable, Decodable, Sendable, Identifiable {
+    let id: String
+    let title: String?
+    let preview: String
+    let profile: String
+    let archived: Bool
+    let pinned: Bool
+    let unread: Bool
+    let isActive: Bool
+    let startedAt: Double?
+    let lastActive: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, preview, profile, archived, pinned, unread
+        case isActive = "is_active"
+        case startedAt = "started_at"
+        case lastActive = "last_active"
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        title = try values.decodeIfPresent(String.self, forKey: .title)
+        preview = try values.decodeIfPresent(String.self, forKey: .preview) ?? ""
+        profile = try values.decodeIfPresent(String.self, forKey: .profile) ?? ""
+        archived = try values.decodeIfPresent(Bool.self, forKey: .archived) ?? false
+        pinned = try values.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
+        unread = try values.decodeIfPresent(Bool.self, forKey: .unread) ?? false
+        isActive = try values.decodeIfPresent(Bool.self, forKey: .isActive) ?? false
+        startedAt = try values.decodeIfPresent(Double.self, forKey: .startedAt)
+        lastActive = try values.decodeIfPresent(Double.self, forKey: .lastActive)
+    }
+}
+
+struct AdminSessionListPage: Equatable, Decodable, Sendable {
+    let sessions: [AdminSessionSummary]
+    let total: Int
+    let limit: Int
+    let offset: Int
+
+    enum CodingKeys: String, CodingKey { case sessions, total, limit, offset }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        sessions = try values.decodeIfPresent([AdminSessionSummary].self, forKey: .sessions) ?? []
+        total = try values.decodeIfPresent(Int.self, forKey: .total) ?? sessions.count
+        limit = try values.decodeIfPresent(Int.self, forKey: .limit) ?? sessions.count
+        offset = try values.decodeIfPresent(Int.self, forKey: .offset) ?? 0
+    }
+}
+
+/// `GET /api/sessions/{id}` detail. Distinct from AdminSessionSummary: server omits list-only
+/// projection fields (preview/is_active) and may include additional detail-only fields we ignore.
+struct AdminSessionDetail: Equatable, Decodable, Sendable {
+    let id: String
+    let title: String?
+    let profile: String
+    let archived: Bool
+    let pinned: Bool
+
+    enum CodingKeys: String, CodingKey { case id, title, profile, archived, pinned }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        title = try values.decodeIfPresent(String.self, forKey: .title)
+        profile = try values.decodeIfPresent(String.self, forKey: .profile) ?? ""
+        archived = try values.decodeIfPresent(Bool.self, forKey: .archived) ?? false
+        pinned = try values.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
+    }
+}
+
+/// One row from `GET /api/sessions/{id}/messages`. Read-only rendering; content is opaque text/JSON,
+/// never re-serialized as an editable resource.
+struct AdminSessionMessage: Equatable, Decodable, Sendable, Identifiable {
+    let id: String
+    let role: String
+    let displayContent: String?
+    let content: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, role, content
+        case displayContent = "display_content"
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        role = try values.decodeIfPresent(String.self, forKey: .role) ?? "unknown"
+        displayContent = try values.decodeIfPresent(String.self, forKey: .displayContent)
+        // `content` may be a string or structured payload server-side; decode leniently as string only.
+        content = try? values.decodeIfPresent(String.self, forKey: .content)
+    }
+}
+
 struct AdminHTTPResponse: Sendable {
     let status: Int
     let body: Data
@@ -161,6 +289,86 @@ struct HermesAdminClient {
             guard result.id == id, result.profile == target.profile else { throw AdminError.wrongTarget }
             return AdminSnapshot(value: result.title ?? "", exists: true)
         }
+    }
+
+    /// `GET /api/profiles`. Read-only inventory; explicitly excludes create/rename/delete/clone.
+    func readProfiles(target: AdminTarget) async throws -> [AdminProfileSummary] {
+        let data = try await perform(get(path: "api/profiles", target: target))
+        struct Envelope: Decodable { let profiles: [AdminProfileSummary] }
+        return try JSONDecoder().decode(Envelope.self, from: data).profiles
+    }
+
+    /// `GET /api/sessions`. Always binds to the reviewed target's exact profile; never omits the
+    /// profile query and relies on server-side default resolution.
+    func readSessions(
+        target: AdminTarget,
+        limit: Int = 20,
+        offset: Int = 0,
+        archived: String = "exclude"
+    ) async throws -> AdminSessionListPage {
+        let clampedLimit = min(max(limit, 0), 100)
+        let data = try await perform(get(
+            path: "api/sessions",
+            target: target,
+            query: [
+                URLQueryItem(name: "profile", value: target.profile),
+                URLQueryItem(name: "limit", value: String(clampedLimit)),
+                URLQueryItem(name: "offset", value: String(max(offset, 0))),
+                URLQueryItem(name: "archived", value: archived)
+            ]
+        ))
+        return try JSONDecoder().decode(AdminSessionListPage.self, from: data)
+    }
+
+    /// `GET /api/sessions/search`. Read-only; `query` is passed verbatim as the server-side search term.
+    func searchSessions(target: AdminTarget, query: String, limit: Int = 20) async throws -> AdminSessionListPage {
+        let clampedLimit = min(max(limit, 0), 100)
+        let data = try await perform(get(
+            path: "api/sessions/search",
+            target: target,
+            query: [
+                URLQueryItem(name: "profile", value: target.profile),
+                URLQueryItem(name: "q", value: query),
+                URLQueryItem(name: "limit", value: String(clampedLimit))
+            ]
+        ))
+        return try JSONDecoder().decode(AdminSessionListPage.self, from: data)
+    }
+
+    /// `GET /api/sessions/{id}`. Exact identifiers only; rejects the same malformed-id shapes as
+    /// the existing session-title editor so read and write paths share one validation rule.
+    func readSessionDetail(target: AdminTarget, id: String) async throws -> AdminSessionDetail {
+        guard !id.isEmpty, id.range(of: #"^[A-Za-z0-9_-]+\z"#, options: .regularExpression) != nil
+        else { throw AdminError.invalidResource }
+        let data = try await perform(get(
+            path: "api/sessions/\(id)",
+            target: target,
+            query: [URLQueryItem(name: "profile", value: target.profile)]
+        ))
+        let detail = try JSONDecoder().decode(AdminSessionDetail.self, from: data)
+        guard detail.id == id, detail.profile == target.profile else { throw AdminError.wrongTarget }
+        return detail
+    }
+
+    /// `GET /api/sessions/{id}/messages`. Read-only transcript projection; no rewrite path exists
+    /// here or on the server for message content.
+    func readSessionMessages(target: AdminTarget, id: String, limit: Int = 50) async throws -> [AdminSessionMessage] {
+        guard !id.isEmpty, id.range(of: #"^[A-Za-z0-9_-]+\z"#, options: .regularExpression) != nil
+        else { throw AdminError.invalidResource }
+        let data = try await perform(get(
+            path: "api/sessions/\(id)/messages",
+            target: target,
+            query: [
+                URLQueryItem(name: "profile", value: target.profile),
+                URLQueryItem(name: "limit", value: String(min(max(limit, 0), 200)))
+            ]
+        ))
+        struct Envelope: Decodable { let messages: [AdminSessionMessage] }
+        if let envelope = try? JSONDecoder().decode(Envelope.self, from: data) {
+            return envelope.messages
+        }
+        // Some server responses return a bare array rather than an envelope.
+        return try JSONDecoder().decode([AdminSessionMessage].self, from: data)
     }
 
     func write(_ resource: AdminResource, target: AdminTarget, value: String) async throws {
