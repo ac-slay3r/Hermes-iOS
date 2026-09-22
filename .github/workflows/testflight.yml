@@ -344,28 +344,55 @@ jobs:
           PY
           }
           ASC_JWT=$(make_token)
-          APP_ID=$(curl --fail --silent --show-error --globoff \
-            -H "Authorization: Bearer ***" \
-            'https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=cool.n0thing.hermes&limit=1' \
-            | python3 -c 'import json,sys; data=json.load(sys.stdin)["data"]; assert len(data)==1; print(data[0]["id"])')
-          ASC_JWT=$(make_token)
-          BUILD_ID=$(curl --fail --silent --show-error --globoff \
-            -H "Authorization: Bearer ***" \
-            "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&filter[version]=$GITHUB_RUN_NUMBER&limit=1" \
-            | python3 -c 'import json,sys; data=json.load(sys.stdin)["data"]; assert len(data)==1; print(data[0]["id"])')
-          ASC_JWT=$(make_token)
-          curl --fail --silent --show-error --globoff \
-            -X PATCH \
-            -H "Authorization: Bearer ***" \
-            -H "Content-Type: application/json" \
-            -d '{"data":{"type":"builds","id":"'"$BUILD_ID"'","attributes":{"usesNonExemptEncryption":false}}}' \
-            "https://api.appstoreconnect.apple.com/v1/builds/$BUILD_ID" \
-            -o /dev/null
-          ASC_JWT=$(make_token)
-          curl --fail --silent --show-error --globoff \
-            -H "Authorization: Bearer ***" \
-            "https://api.appstoreconnect.apple.com/v1/builds/$BUILD_ID?include=buildBetaDetail" \
-            -o /tmp/build-readback.json
+          APP_ID=""
+          for _ in $(seq 1 5); do
+            ASC_JWT=$(make_token)
+            if APP_ID=$(curl --fail --silent --show-error --globoff \
+              -H "Authorization: Bearer ${ASC_JWT}" \
+              'https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=cool.n0thing.hermes&limit=1' \
+              | python3 -c 'import json,sys; data=json.load(sys.stdin)["data"]; assert len(data)==1; print(data[0]["id"])'); then
+              break
+            fi
+            APP_ID=""
+            sleep 10
+          done
+          test -n "$APP_ID"
+          BUILD_ID=""
+          for _ in $(seq 1 5); do
+            ASC_JWT=$(make_token)
+            if BUILD_ID=$(curl --fail --silent --show-error --globoff \
+              -H "Authorization: Bearer ${ASC_JWT}" \
+              "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&filter[version]=$GITHUB_RUN_NUMBER&limit=1" \
+              | python3 -c 'import json,sys; data=json.load(sys.stdin)["data"]; assert len(data)==1; print(data[0]["id"])'); then
+              break
+            fi
+            BUILD_ID=""
+            sleep 10
+          done
+          test -n "$BUILD_ID"
+          for _ in $(seq 1 5); do
+            ASC_JWT=$(make_token)
+            if curl --fail --silent --show-error --globoff \
+              -X PATCH \
+              -H "Authorization: Bearer ${ASC_JWT}" \
+              -H "Content-Type: application/json" \
+              -d '{"data":{"type":"builds","id":"'"$BUILD_ID"'","attributes":{"usesNonExemptEncryption":false}}}' \
+              "https://api.appstoreconnect.apple.com/v1/builds/$BUILD_ID" \
+              -o /dev/null; then
+              break
+            fi
+            sleep 10
+          done
+          for _ in $(seq 1 5); do
+            ASC_JWT=$(make_token)
+            if curl --fail --silent --show-error --globoff \
+              -H "Authorization: Bearer ${ASC_JWT}" \
+              "https://api.appstoreconnect.apple.com/v1/builds/$BUILD_ID?include=buildBetaDetail" \
+              -o /tmp/build-readback.json; then
+              break
+            fi
+            sleep 10
+          done
           python3 - <<'PY'
           import json
           d = json.load(open("/tmp/build-readback.json"))
