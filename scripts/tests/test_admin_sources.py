@@ -186,6 +186,19 @@ class AdminSourceTests(unittest.TestCase):
         for forbidden in ["access_token", "accessToken", "refresh_token", "refreshToken", "Keychain"]:
             self.assertNotIn(forbidden, persistence)
 
+    def test_profiles_sessions_screens_distinguish_authority_loss_from_other_errors(self):
+        views = (ROOT / "HermesMobile/Administration/ProfilesSessionsViews.swift").read_text()
+        root = (ROOT / "HermesMobile/Administration/AdminRoot.swift").read_text()
+        self.assertIn("func adminSignalsAuthorityLost(_ error: Error) -> Bool", views)
+        self.assertIn("case .wrongTarget, .http(401), .http(403):", views)
+        # All three read paths (profiles list, sessions list+search, session detail) must call the
+        # classifier and route it through onAuthorityLost rather than a single generic error string.
+        self.assertEqual(views.count("if adminSignalsAuthorityLost(error) {"), 4)
+        self.assertEqual(views.count("onAuthorityLost()"), 4)
+        self.assertIn("var onAuthorityLost: @MainActor () -> Void = {}", views)
+        self.assertIn("private func handleAuthorityLost(for reviewedTarget: AdminTarget, session: AdminAuthSession)", root)
+        self.assertIn("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }", root)
+
 
 if __name__ == "__main__":
     unittest.main()
