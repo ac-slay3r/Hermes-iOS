@@ -228,7 +228,23 @@ struct AdminRoot: View {
                         plannedArea("Skills, tools & MCP", systemImage: "wrench.and.screwdriver", reason: "Locked")
                     }
                     plannedArea("Memory & instructions", systemImage: "brain.head.profile")
-                    plannedArea("Automation & connections", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                    if let overview, let authSession {
+                        NavigationLink {
+                            AutomationConnectionsHubView(
+                                client: HermesAdminClient(transport: URLSessionAdminTransport(
+                                    target: overview.target,
+                                    accessTokenProvider: { authSession.accessToken }
+                                )),
+                                target: overview.target,
+                                onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }
+                            )
+                        } label: {
+                            Label("Automation & connections", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                        }
+                        .accessibilityIdentifier("admin.automationConnections")
+                    } else {
+                        plannedArea("Automation & connections", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90", reason: "Locked")
+                    }
                     plannedArea("System & operations", systemImage: "server.rack")
                     Text(overview == nil
                          ? "Overview unlocks after this dashboard verifies sign-in and profile context."

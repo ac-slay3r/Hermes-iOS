@@ -197,7 +197,27 @@ class AdminSourceTests(unittest.TestCase):
         self.assertEqual(views.count("onAuthorityLost()"), 4)
         self.assertIn("var onAuthorityLost: @MainActor () -> Void = {}", views)
         self.assertIn("private func handleAuthorityLost(for reviewedTarget: AdminTarget, session: AdminAuthSession)", root)
-        self.assertIn("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }", root)
+
+    def test_automation_connections_screens_reuse_authority_loss_classifier(self):
+        views = (ROOT / "HermesMobile/Administration/AutomationConnectionsViews.swift").read_text()
+        root = (ROOT / "HermesMobile/Administration/AdminRoot.swift").read_text()
+        # Batch 3 must reuse the shared classifier rather than re-implement its own ad hoc
+        # error matching, and every one of its five screens must route through it.
+        self.assertIn("if adminSignalsAuthorityLost(error) {", views)
+        self.assertEqual(views.count("classify(error, onAuthorityLost: onAuthorityLost)"), 5)
+        self.assertIn("onAuthorityLost: @MainActor () -> Void", views)
+        self.assertIn('Label("Automation & connections"', root)
+        self.assertIn("handleAuthorityLost(for: overview.target, session: authSession) }", root)
+
+    def test_batch3_screens_are_strictly_read_only(self):
+        views = (ROOT / "HermesMobile/Administration/AutomationConnectionsViews.swift").read_text()
+        # No trigger/pause/resume/approve/revoke/config/test verbs wired anywhere in this
+        # file yet — those carry real side effects (execute work, deliver messages, authorize
+        # users) and belong to a later, explicit-consequence milestone.
+        for forbidden in ["func trigger", "func pause", "func resume", "func approve",
+                           "func revoke", "func enable", "func disable", "func testConnection",
+                           "\"POST\"", "\"PUT\"", "\"DELETE\"", "\"PATCH\""]:
+            self.assertNotIn(forbidden, views)
 
     def test_skills_tools_mcp_screens_are_read_only_and_reuse_authority_loss_classifier(self):
         views = (ROOT / "HermesMobile/Administration/SkillsToolsMCPViews.swift").read_text()
@@ -226,7 +246,7 @@ class AdminSourceTests(unittest.TestCase):
         self.assertIn("struct SkillsToolsMCPHubView: View", views)
         self.assertIn("SkillsToolsMCPHubView(", root)
         self.assertIn("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }", root)
-        self.assertEqual(root.count("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }"), 2)
+        self.assertEqual(root.count("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }"), 3)
 
 
 if __name__ == "__main__":

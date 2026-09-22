@@ -839,6 +839,93 @@ final class AdminClientTests: XCTestCase {
         XCTAssertEqual(request.url?.query, "profile=work")
     }
 
+    func testReadCronJobsDecodesArrayWithDefaults() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"[{"id":"job-1","name":"Nightly digest","enabled":true,"schedule_display":"Daily at 08:00","profile":"work"},{"id":"job-2","name":"Weekly sweep"}]"#)
+        ])
+
+        let jobs = try await HermesAdminClient(transport: transport).readCronJobs(target: target)
+
+        XCTAssertEqual(jobs.count, 2)
+        XCTAssertEqual(jobs[0].name, "Nightly digest")
+        XCTAssertEqual(jobs[0].scheduleDisplay, "Daily at 08:00")
+        XCTAssertTrue(jobs[1].enabled)
+        XCTAssertNil(jobs[1].profile)
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/api/cron/jobs")
+        XCTAssertEqual(request.url?.query, "profile=work")
+    }
+
+    func testReadMessagingPlatformsDecodesEnvelopeWithDefaults() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"platforms":[{"id":"discord","name":"Discord","enabled":true,"configured":true,"gateway_running":true},{"id":"telegram","enabled":false,"configured":false,"gateway_running":false,"error_message":"missing token"}]}"#)
+        ])
+
+        let platforms = try await HermesAdminClient(transport: transport).readMessagingPlatforms(target: target)
+
+        XCTAssertEqual(platforms.count, 2)
+        XCTAssertEqual(platforms[0].name, "Discord")
+        XCTAssertTrue(platforms[0].gatewayRunning)
+        XCTAssertEqual(platforms[1].name, "telegram")
+        XCTAssertEqual(platforms[1].errorMessage, "missing token")
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/api/messaging/platforms")
+        XCTAssertEqual(request.url?.query, "profile=work")
+    }
+
+    func testReadWebhooksDecodesStatusAndSubscriptionsWithDefaults() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"enabled":true,"base_url":"https://hook.example.com","subscriptions":[{"name":"deploy-notify","description":"d","events":["deploy.done"],"deliver":"log","enabled":true,"secret_set":true}]}"#)
+        ])
+
+        let status = try await HermesAdminClient(transport: transport).readWebhooks(target: target)
+
+        XCTAssertTrue(status.enabled)
+        XCTAssertEqual(status.baseURL, "https://hook.example.com")
+        XCTAssertEqual(status.subscriptions.count, 1)
+        XCTAssertEqual(status.subscriptions[0].name, "deploy-notify")
+        XCTAssertTrue(status.subscriptions[0].secretSet)
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/api/webhooks")
+    }
+
+    func testReadPairingDecodesPendingAndApprovedLeniently() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"pending":[{"user_id":"u1","source":"discord"}],"approved":[{"id":"u2","display_name":"Andrew","source":"telegram"}]}"#)
+        ])
+
+        let status = try await HermesAdminClient(transport: transport).readPairing(target: target)
+
+        XCTAssertEqual(status.pending.count, 1)
+        XCTAssertEqual(status.pending[0].id, "u1")
+        XCTAssertEqual(status.approved[0].displayName, "Andrew")
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/api/pairing")
+        XCTAssertEqual(request.url?.query, "profile=work")
+    }
+
+    func testReadLogsClampsLinesAndPassesSearch() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"file":"agent","lines":["line one","line two"]}"#)
+        ])
+
+        let result = try await HermesAdminClient(transport: transport).readLogs(
+            target: target, file: "agent", lines: 9999, search: "error"
+        )
+
+        XCTAssertEqual(result.lines.count, 2)
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/api/logs")
+        let query = try XCTUnwrap(request.url?.query)
+        XCTAssertTrue(query.contains("lines=500"))
+        XCTAssertTrue(query.contains("search=error"))
+    }
+
     private func makeEditor(_ transport: any AdminTransport) throws -> AdminEditor {
         AdminEditor(client: HermesAdminClient(transport: transport), target: try AdminTarget(address: "https://example.com", profile: "default"))
     }
