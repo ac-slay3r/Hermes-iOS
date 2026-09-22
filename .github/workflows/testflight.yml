@@ -300,13 +300,14 @@ jobs:
           test -n "$APP_ID"
           for _ in $(seq 1 30); do
             ASC_JWT=$(make_token)
-            FOUND=$(curl --fail --silent --show-error --globoff \
-              -H "Authorization: Bearer ***" \
+            if FOUND=$(curl --fail --silent --show-error --globoff \
+              -H "Authorization: Bearer ${ASC_JWT}" \
               "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=$APP_ID&filter[version]=$GITHUB_RUN_NUMBER&limit=1" \
-              | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["data"]))')
-            if test "$FOUND" = 1; then
-              echo "Build $GITHUB_RUN_NUMBER is visible in App Store Connect."
-              exit 0
+              | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["data"]))'); then
+              if test "$FOUND" = 1; then
+                echo "Build $GITHUB_RUN_NUMBER is visible in App Store Connect."
+                exit 0
+              fi
             fi
             sleep 30
           done
