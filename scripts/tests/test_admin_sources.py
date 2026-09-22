@@ -248,6 +248,23 @@ class AdminSourceTests(unittest.TestCase):
         self.assertIn("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }", root)
         self.assertEqual(root.count("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }"), 3)
 
+    def test_memory_and_session_title_editors_reuse_existing_editor_and_authority_loss_classifier(self):
+        editor = (ROOT / "HermesMobile/Administration/AdminEditor.swift").read_text()
+        root = (ROOT / "HermesMobile/Administration/AdminRoot.swift").read_text()
+        views = (ROOT / "HermesMobile/Administration/ProfilesSessionsViews.swift").read_text()
+        # M3 batch (b) reuses the M1-built AdminEditor/AdminCorrectionView review->apply->
+        # readback pipeline rather than building a parallel one; it must route load/apply
+        # failures through the same shared classifier used everywhere else.
+        self.assertIn("var onAuthorityLost: @MainActor () -> Void = {}", editor)
+        self.assertEqual(editor.count("if adminSignalsAuthorityLost(error) { onAuthorityLost() }"), 2)
+        self.assertIn("AdminCorrectionView(", root)
+        self.assertIn("resource: .soul", root)
+        self.assertIn('Label("Memory & instructions", systemImage: "brain.head.profile")', root)
+        self.assertIn("editor.onAuthorityLost = { handleAuthorityLost(for: overview.target, session: authSession) }", root)
+        self.assertIn("resource: .sessionTitle(sessionID)", views)
+        self.assertIn('Label("Edit title", systemImage: "pencil")', views)
+        self.assertIn("editor.onAuthorityLost = onAuthorityLost", views)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -538,6 +538,39 @@ final class AdminClientTests: XCTestCase {
         XCTAssertEqual(editor.phase, .rejected)
     }
 
+    func testEditorLoadFailureCallsOnAuthorityLostForExpiredSignIn() async throws {
+        let transport = AdminFixtureTransport(responses: [.http(401, "")])
+        let editor = try makeEditor(transport)
+        var authorityLostCalls = 0
+        editor.onAuthorityLost = { authorityLostCalls += 1 }
+        await editor.load(.soul)
+        XCTAssertEqual(editor.phase, .failed)
+        XCTAssertEqual(authorityLostCalls, 1)
+    }
+
+    func testEditorLoadFailureDoesNotCallOnAuthorityLostForOtherErrors() async throws {
+        let transport = AdminFixtureTransport(responses: [.failure])
+        let editor = try makeEditor(transport)
+        var authorityLostCalls = 0
+        editor.onAuthorityLost = { authorityLostCalls += 1 }
+        await editor.load(.soul)
+        XCTAssertEqual(editor.phase, .failed)
+        XCTAssertEqual(authorityLostCalls, 0)
+    }
+
+    func testEditorApplyPreflightFailureCallsOnAuthorityLostForExpiredSignIn() async throws {
+        let transport = AdminFixtureTransport(responses: [.json(#"{"content":"a","exists":true}"#), .http(401, "")])
+        let editor = try makeEditor(transport)
+        var authorityLostCalls = 0
+        editor.onAuthorityLost = { authorityLostCalls += 1 }
+        await editor.load(.soul)
+        editor.proposed = "b"
+        editor.review()
+        await editor.apply()
+        XCTAssertEqual(editor.phase, .failed)
+        XCTAssertEqual(authorityLostCalls, 1)
+    }
+
     func testProfileSwitchDiscardsDraft() async throws {
         let editor = try makeEditor(AdminFixtureTransport(responses: [.json(#"{"content":"a","exists":true}"#)]))
         await editor.load(.soul)

@@ -15,6 +15,9 @@ final class AdminEditor {
     private let client: HermesAdminClient
     private var generation = UUID()
     private var reviewed: String?
+    /// Set by the caller so a 401/403/wrong-target failure routes back through the same
+    /// re-sign-in path the read-only screens use, rather than a dead-end generic error.
+    var onAuthorityLost: @MainActor () -> Void = {}
 
     init(client: HermesAdminClient, target: AdminTarget) {
         self.client = client
@@ -50,6 +53,7 @@ final class AdminEditor {
             phase = .editing
         } catch {
             guard ticket == generation else { return }
+            if adminSignalsAuthorityLost(error) { onAuthorityLost() }
             phase = .failed
         }
     }
@@ -78,6 +82,7 @@ final class AdminEditor {
             guard current == original else { phase = .conflict; return }
         } catch {
             guard ticket == generation else { return }
+            if adminSignalsAuthorityLost(error) { onAuthorityLost() }
             phase = .failed // No write was attempted.
             return
         }

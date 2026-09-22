@@ -320,6 +320,19 @@ struct SessionDetailView: View {
                     LabeledContent("Title", value: detail.title?.isEmpty == false ? detail.title! : "Untitled")
                     LabeledContent("Archived", value: detail.archived ? "Yes" : "No")
                     LabeledContent("Pinned", value: detail.pinned ? "Yes" : "No")
+                    NavigationLink {
+                        AdminCorrectionView(
+                            editor: {
+                                let editor = AdminEditor(client: client, target: target)
+                                editor.onAuthorityLost = onAuthorityLost
+                                return editor
+                            }(),
+                            resource: .sessionTitle(sessionID)
+                        )
+                    } label: {
+                        Label("Edit title", systemImage: "pencil")
+                    }
+                    .accessibilityIdentifier("admin.sessionDetail.editTitle")
                 }
 
                 Section("Messages · \(messages.count)") {
@@ -365,6 +378,7 @@ struct SessionDetailView: View {
         .tint(Design.Brand.accent)
         .navigationTitle("Session")
         .task { if !loadedOnce { await load() } }
+        .onAppear { if loadedOnce { Task { await load() } } }
     }
 
     @MainActor
