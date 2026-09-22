@@ -779,6 +779,66 @@ final class AdminClientTests: XCTestCase {
         }
     }
 
+    // MARK: - Skills, Tools, MCP (M2 Batch 2, read-only)
+
+    func testReadSkillsDecodesInventoryWithDefaults() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"[{"name":"arxiv","description":"Search papers","category":"research","enabled":true,"usage":4,"provenance":"hub"},{"name":"custom","description":"","category":"","enabled":false}]"#)
+        ])
+
+        let skills = try await HermesAdminClient(transport: transport).readSkills(target: target)
+
+        XCTAssertEqual(skills.count, 2)
+        XCTAssertEqual(skills[0].name, "arxiv")
+        XCTAssertEqual(skills[0].provenance, "hub")
+        XCTAssertEqual(skills[0].usage, 4)
+        XCTAssertFalse(skills[1].enabled)
+        XCTAssertEqual(skills[1].usage, 0)
+        XCTAssertEqual(skills[1].provenance, "agent")
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/api/skills")
+        XCTAssertEqual(request.url?.query, "profile=work")
+    }
+
+    func testReadToolsetsDecodesInventoryWithDefaults() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"[{"name":"web_search","label":"Web Search","description":"d","platform":"cli","platform_label":"CLI","enabled":true,"available":true,"configured":true,"tools":["search"]}]"#)
+        ])
+
+        let toolsets = try await HermesAdminClient(transport: transport).readToolsets(target: target)
+
+        XCTAssertEqual(toolsets.count, 1)
+        XCTAssertEqual(toolsets[0].name, "web_search")
+        XCTAssertEqual(toolsets[0].label, "Web Search")
+        XCTAssertTrue(toolsets[0].configured)
+        XCTAssertEqual(toolsets[0].tools, ["search"])
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/api/tools/toolsets")
+        XCTAssertEqual(request.url?.query, "profile=work")
+    }
+
+    func testReadMCPServersDecodesEnvelopeWithRedactedEnvAndDefaults() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"servers":[{"name":"github","transport":"http","url":"https://example.com/mcp","command":null,"args":[],"env":{"TOKEN":"***redacted***"},"auth":"header","enabled":true,"tools":["search_issues"]},{"name":"local-fs","transport":"stdio","command":"mcp-fs"}]}"#)
+        ])
+
+        let servers = try await HermesAdminClient(transport: transport).readMCPServers(target: target)
+
+        XCTAssertEqual(servers.count, 2)
+        XCTAssertEqual(servers[0].name, "github")
+        XCTAssertEqual(servers[0].env["TOKEN"], "***redacted***")
+        XCTAssertEqual(servers[0].tools, ["search_issues"])
+        XCTAssertEqual(servers[1].transport, "stdio")
+        XCTAssertNil(servers[1].tools)
+        XCTAssertTrue(servers[1].enabled)
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/api/mcp/servers")
+        XCTAssertEqual(request.url?.query, "profile=work")
+    }
+
     private func makeEditor(_ transport: any AdminTransport) throws -> AdminEditor {
         AdminEditor(client: HermesAdminClient(transport: transport), target: try AdminTarget(address: "https://example.com", profile: "default"))
     }

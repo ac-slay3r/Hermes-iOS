@@ -210,7 +210,23 @@ struct AdminRoot: View {
                     } else {
                         plannedArea("Profiles & sessions", systemImage: "person.2", reason: "Locked")
                     }
-                    plannedArea("Skills, tools & MCP", systemImage: "wrench.and.screwdriver")
+                    if let overview, let authSession {
+                        NavigationLink {
+                            SkillsToolsMCPHubView(
+                                target: overview.target,
+                                client: HermesAdminClient(transport: URLSessionAdminTransport(
+                                    target: overview.target,
+                                    accessTokenProvider: { authSession.accessToken }
+                                )),
+                                onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }
+                            )
+                        } label: {
+                            Label("Skills, tools & MCP", systemImage: "wrench.and.screwdriver")
+                        }
+                        .accessibilityIdentifier("admin.skillsToolsMcp")
+                    } else {
+                        plannedArea("Skills, tools & MCP", systemImage: "wrench.and.screwdriver", reason: "Locked")
+                    }
                     plannedArea("Memory & instructions", systemImage: "brain.head.profile")
                     plannedArea("Automation & connections", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
                     plannedArea("System & operations", systemImage: "server.rack")
