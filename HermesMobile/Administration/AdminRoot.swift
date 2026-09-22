@@ -227,7 +227,29 @@ struct AdminRoot: View {
                     } else {
                         plannedArea("Skills, tools & MCP", systemImage: "wrench.and.screwdriver", reason: "Locked")
                     }
-                    plannedArea("Memory & instructions", systemImage: "brain.head.profile")
+                    if let overview, let authSession {
+                        NavigationLink {
+                            AdminCorrectionView(
+                                editor: {
+                                    let editor = AdminEditor(
+                                        client: HermesAdminClient(transport: URLSessionAdminTransport(
+                                            target: overview.target,
+                                            accessTokenProvider: { authSession.accessToken }
+                                        )),
+                                        target: overview.target
+                                    )
+                                    editor.onAuthorityLost = { handleAuthorityLost(for: overview.target, session: authSession) }
+                                    return editor
+                                }(),
+                                resource: .soul
+                            )
+                        } label: {
+                            Label("Memory & instructions", systemImage: "brain.head.profile")
+                        }
+                        .accessibilityIdentifier("admin.memoryInstructions")
+                    } else {
+                        plannedArea("Memory & instructions", systemImage: "brain.head.profile", reason: "Locked")
+                    }
                     if let overview, let authSession {
                         NavigationLink {
                             AutomationConnectionsHubView(
