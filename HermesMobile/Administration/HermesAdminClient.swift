@@ -287,7 +287,15 @@ struct AdminSessionMessage: Equatable, Decodable, Sendable, Identifiable {
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        id = try values.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        // The server's row id is a SQLite integer, not a string; accept either shape rather
+        // than throwing a type-mismatch that silently failed every message on every session.
+        if let stringID = try? values.decodeIfPresent(String.self, forKey: .id) {
+            id = stringID
+        } else if let intID = try? values.decodeIfPresent(Int.self, forKey: .id) {
+            id = String(intID)
+        } else {
+            id = UUID().uuidString
+        }
         role = try values.decodeIfPresent(String.self, forKey: .role) ?? "unknown"
         displayContent = try values.decodeIfPresent(String.self, forKey: .displayContent)
         // `content` may be a string or structured payload server-side; decode leniently as string only.

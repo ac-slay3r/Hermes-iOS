@@ -771,6 +771,23 @@ final class AdminClientTests: XCTestCase {
         XCTAssertTrue(transport.requests.isEmpty)
     }
 
+    func testReadSessionMessagesDecodesIntegerRowIDsFromRealServerShape() async throws {
+        // The server's actual row id is a SQLite integer (e.g. 46639), not a string. A prior
+        // bug decoded `id` as String-only, which throws a type-mismatch (not a missing-key
+        // fallback) on every real message from every session — this reproduces that exact
+        // shape to guard against the regression.
+        let target = try AdminTarget(address: "https://example.com", profile: "default")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"messages":[{"id":46639,"role":"user","content":"hi"},{"id":46640,"role":"assistant","content":""}]}"#)
+        ])
+        let messages = try await HermesAdminClient(transport: transport)
+            .readSessionMessages(target: target, id: "s1")
+        XCTAssertEqual(messages.count, 2)
+        XCTAssertEqual(messages[0].id, "46639")
+        XCTAssertEqual(messages[0].role, "user")
+        XCTAssertEqual(messages[1].id, "46640")
+    }
+
     // MARK: - Target persistence (address/profile only; no tokens)
 
     func testRestoredTargetPrefillsFieldsButDoesNotAutoConnect() async throws {
