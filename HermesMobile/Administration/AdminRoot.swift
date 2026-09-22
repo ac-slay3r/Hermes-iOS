@@ -200,7 +200,8 @@ struct AdminRoot: View {
                                     target: overview.target,
                                     accessTokenProvider: { authSession.accessToken }
                                 )),
-                                overview: overview
+                                overview: overview,
+                                onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }
                             )
                         } label: {
                             Label("Profiles & sessions", systemImage: "person.2")
@@ -351,6 +352,19 @@ struct AdminRoot: View {
         overview = nil
         authSession = nil
         connectionMessage = nil
+    }
+
+    /// Called from a pushed read-only screen (Profiles/Sessions/detail) when its own request
+    /// hits a wrong-target/401/403. Mirrors refreshOverview's handling: only the exact session
+    /// and target that were live when this fired are cleared, avoiding a stale callback from an
+    /// already-superseded screen invalidating a newer sign-in.
+    @MainActor
+    private func handleAuthorityLost(for reviewedTarget: AdminTarget, session: AdminAuthSession) {
+        guard target == reviewedTarget, authSession === session else { return }
+        session.cancel()
+        authSession = nil
+        overview = nil
+        connectionMessage = "Dashboard authority could not be verified. Sign in again before continuing."
     }
 }
 

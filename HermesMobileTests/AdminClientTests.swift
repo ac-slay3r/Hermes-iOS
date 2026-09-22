@@ -768,6 +768,17 @@ final class AdminClientTests: XCTestCase {
         XCTAssertNil(persistence.loadLastAdminTarget())
     }
 
+    // MARK: - Read-screen authority-loss classification (Profiles/Sessions/detail)
+
+    func testAdminSignalsAuthorityLostMatchesOverviewRefreshPolicy() throws {
+        for error in [AdminError.wrongTarget, AdminError.http(401), AdminError.http(403)] as [Error] {
+            XCTAssertTrue(adminSignalsAuthorityLost(error))
+        }
+        for error in [AdminError.http(500), AdminError.malformedResponse, AdminError.invalidResource, URLError(.notConnectedToInternet)] as [Error] {
+            XCTAssertFalse(adminSignalsAuthorityLost(error))
+        }
+    }
+
     private func makeEditor(_ transport: any AdminTransport) throws -> AdminEditor {
         AdminEditor(client: HermesAdminClient(transport: transport), target: try AdminTarget(address: "https://example.com", profile: "default"))
     }

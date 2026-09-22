@@ -3,10 +3,24 @@ import SwiftUI
 /// Read-only Profiles & Sessions screens (M2 Batch 1). No create/rename/delete/clone/archive
 /// mutation paths are wired here even though the server exposes them; those remain M4 scope.
 
+/// Same authority-loss classification the Overview screen already uses (AdminOverviewRefreshPolicy):
+/// a wrong-target/401/403 means the dashboard sign-in no longer authorizes this read, distinct
+/// from a transient network/server error. Read screens must not present these identically.
+func adminSignalsAuthorityLost(_ error: Error) -> Bool {
+    guard let adminError = error as? AdminError else { return false }
+    switch adminError {
+    case .wrongTarget, .http(401), .http(403):
+        return true
+    default:
+        return false
+    }
+}
+
 struct ProfilesListView: View {
     let target: AdminTarget
     let client: HermesAdminClient
     let overview: AdminOverview
+    var onAuthorityLost: @MainActor () -> Void = {}
 
     @State private var profiles: [AdminProfileSummary] = []
     @State private var loading = false
@@ -96,7 +110,7 @@ struct ProfilesListView: View {
 
             Section {
                 NavigationLink {
-                    SessionsListView(target: target, client: client)
+                    SessionsListView(target: target, client: client, onAuthorityLost: onAuthorityLost)
                 } label: {
                     Label("Sessions", systemImage: "bubble.left.and.bubble.right")
                 }
@@ -120,7 +134,12 @@ struct ProfilesListView: View {
         do {
             profiles = try await client.readProfiles(target: target)
         } catch {
-            errorMessage = "Could not load profiles. Existing list, if any, remains visible."
+            if adminSignalsAuthorityLost(error) {
+                errorMessage = "Dashboard sign-in expired. Go back and sign in again."
+                onAuthorityLost()
+            } else {
+                errorMessage = "Could not load profiles. Existing list, if any, remains visible."
+            }
         }
     }
 }
@@ -128,6 +147,7 @@ struct ProfilesListView: View {
 struct SessionsListView: View {
     let target: AdminTarget
     let client: HermesAdminClient
+    var onAuthorityLost: @MainActor () -> Void = {}
 
     @State private var page: AdminSessionListPage?
     @State private var loading = false
@@ -168,7 +188,7 @@ struct SessionsListView: View {
                     }
                     ForEach(page.sessions) { session in
                         NavigationLink {
-                            SessionDetailView(target: target, client: client, sessionID: session.id)
+                            SessionDetailView(target: target, client: client, sessionID: session.id, onAuthorityLost: onAuthorityLost)
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
@@ -243,7 +263,12 @@ struct SessionsListView: View {
         do {
             page = try await client.readSessions(target: target)
         } catch {
-            errorMessage = "Could not load sessions. Existing list, if any, remains visible."
+            if adminSignalsAuthorityLost(error) {
+                errorMessage = "Dashboard sign-in expired. Go back and sign in again."
+                onAuthorityLost()
+            } else {
+                errorMessage = "Could not load sessions. Existing list, if any, remains visible."
+            }
         }
     }
 
@@ -256,7 +281,12 @@ struct SessionsListView: View {
         do {
             page = try await client.searchSessions(target: target, query: searchText)
         } catch {
-            errorMessage = "Search failed. Existing list, if any, remains visible."
+            if adminSignalsAuthorityLost(error) {
+                errorMessage = "Dashboard sign-in expired. Go back and sign in again."
+                onAuthorityLost()
+            } else {
+                errorMessage = "Search failed. Existing list, if any, remains visible."
+            }
         }
     }
 }
@@ -265,6 +295,7 @@ struct SessionDetailView: View {
     let target: AdminTarget
     let client: HermesAdminClient
     let sessionID: String
+    var onAuthorityLost: @MainActor () -> Void = {}
 
     @State private var detail: AdminSessionDetail?
     @State private var messages: [AdminSessionMessage] = []
@@ -348,7 +379,12 @@ struct SessionDetailView: View {
             detail = try await detailFetch
             messages = try await messagesFetch
         } catch {
-            errorMessage = "Could not read this session. Check sign-in, authority and profile."
+            if adminSignalsAuthorityLost(error) {
+                errorMessage = "Dashboard sign-in expired. Go back and sign in again."
+                onAuthorityLost()
+            } else {
+                errorMessage = "Could not read this session. It may not exist, or the request failed; try refreshing."
+            }
         }
     }
 }
