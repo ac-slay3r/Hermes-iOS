@@ -199,6 +199,35 @@ class AdminSourceTests(unittest.TestCase):
         self.assertIn("private func handleAuthorityLost(for reviewedTarget: AdminTarget, session: AdminAuthSession)", root)
         self.assertIn("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }", root)
 
+    def test_skills_tools_mcp_screens_are_read_only_and_reuse_authority_loss_classifier(self):
+        views = (ROOT / "HermesMobile/Administration/SkillsToolsMCPViews.swift").read_text()
+        root = (ROOT / "HermesMobile/Administration/AdminRoot.swift").read_text()
+        client = (ROOT / "HermesMobile/Administration/HermesAdminClient.swift").read_text()
+        # Read-only: no mutation routes wired for skills/tools/MCP in this batch.
+        for forbidden in [
+            "PUT \"api/skills", "POST \"api/skills", "PUT \"api/tools/toolsets",
+            "POST \"api/mcp/servers", "DELETE \"api/mcp/servers", "PUT \"api/mcp/servers",
+        ]:
+            self.assertNotIn(forbidden, client)
+        for token in [
+            'path: "api/skills"', 'path: "api/tools/toolsets"', 'path: "api/mcp/servers"',
+            "func readSkills(target: AdminTarget) async throws -> [AdminSkillSummary]",
+            "func readToolsets(target: AdminTarget) async throws -> [AdminToolsetSummary]",
+            "func readMCPServers(target: AdminTarget) async throws -> [AdminMCPServerSummary]",
+        ]:
+            self.assertIn(token, client)
+        # Each of the three list screens reuses the same authority-loss classifier as Batch 1,
+        # rather than reintroducing a separate generic catch-all.
+        self.assertEqual(views.count("if adminSignalsAuthorityLost(error) {"), 3)
+        self.assertEqual(views.count("onAuthorityLost()"), 3)
+        self.assertIn("struct SkillsListView: View", views)
+        self.assertIn("struct ToolsetsListView: View", views)
+        self.assertIn("struct MCPServersListView: View", views)
+        self.assertIn("struct SkillsToolsMCPHubView: View", views)
+        self.assertIn("SkillsToolsMCPHubView(", root)
+        self.assertIn("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }", root)
+        self.assertEqual(root.count("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }"), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
