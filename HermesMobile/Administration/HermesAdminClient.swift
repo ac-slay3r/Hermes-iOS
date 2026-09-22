@@ -227,6 +227,93 @@ struct AdminSessionMessage: Equatable, Decodable, Sendable, Identifiable {
     }
 }
 
+/// One row from `GET /api/skills`. Read-only inventory; no create/content-edit/toggle wired here.
+struct AdminSkillSummary: Equatable, Decodable, Sendable, Identifiable {
+    let name: String
+    let description: String
+    let category: String
+    let enabled: Bool
+    let usage: Int
+    let provenance: String
+    var id: String { name }
+
+    enum CodingKeys: String, CodingKey { case name, description, category, enabled, usage, provenance }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        name = try values.decode(String.self, forKey: .name)
+        description = try values.decodeIfPresent(String.self, forKey: .description) ?? ""
+        category = try values.decodeIfPresent(String.self, forKey: .category) ?? ""
+        enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        usage = try values.decodeIfPresent(Int.self, forKey: .usage) ?? 0
+        provenance = try values.decodeIfPresent(String.self, forKey: .provenance) ?? "agent"
+    }
+}
+
+/// One row from `GET /api/tools/toolsets`. Read-only; no enable/disable, model/provider/env
+/// assignment wired here — those can trigger dependency installation server-side (M4 scope).
+struct AdminToolsetSummary: Equatable, Decodable, Sendable, Identifiable {
+    let name: String
+    let label: String
+    let description: String
+    let platform: String
+    let platformLabel: String
+    let enabled: Bool
+    let available: Bool
+    let configured: Bool
+    let tools: [String]
+    var id: String { name }
+
+    enum CodingKeys: String, CodingKey {
+        case name, label, description, platform
+        case platformLabel = "platform_label"
+        case enabled, available, configured, tools
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        name = try values.decode(String.self, forKey: .name)
+        label = try values.decodeIfPresent(String.self, forKey: .label) ?? name
+        description = try values.decodeIfPresent(String.self, forKey: .description) ?? ""
+        platform = try values.decodeIfPresent(String.self, forKey: .platform) ?? ""
+        platformLabel = try values.decodeIfPresent(String.self, forKey: .platformLabel) ?? ""
+        enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        available = try values.decodeIfPresent(Bool.self, forKey: .available) ?? false
+        configured = try values.decodeIfPresent(Bool.self, forKey: .configured) ?? false
+        tools = try values.decodeIfPresent([String].self, forKey: .tools) ?? []
+    }
+}
+
+/// One row from `GET /api/mcp/servers`. Server pre-redacts env values (never raw secrets);
+/// no add/remove/enable/test/auth wired here — those are explicit-consequence M4/M5 actions.
+struct AdminMCPServerSummary: Equatable, Decodable, Sendable, Identifiable {
+    let name: String
+    let transport: String
+    let url: String?
+    let command: String?
+    let args: [String]
+    let env: [String: String]
+    let auth: String?
+    let enabled: Bool
+    let tools: [String]?
+    var id: String { name }
+
+    enum CodingKeys: String, CodingKey { case name, transport, url, command, args, env, auth, enabled, tools }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        name = try values.decode(String.self, forKey: .name)
+        transport = try values.decodeIfPresent(String.self, forKey: .transport) ?? "unknown"
+        url = try values.decodeIfPresent(String.self, forKey: .url)
+        command = try values.decodeIfPresent(String.self, forKey: .command)
+        args = try values.decodeIfPresent([String].self, forKey: .args) ?? []
+        env = try values.decodeIfPresent([String: String].self, forKey: .env) ?? [:]
+        auth = try values.decodeIfPresent(String.self, forKey: .auth)
+        enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        tools = try values.decodeIfPresent([String].self, forKey: .tools)
+    }
+}
+
 struct AdminHTTPResponse: Sendable {
     let status: Int
     let body: Data
@@ -369,6 +456,38 @@ struct HermesAdminClient {
         }
         // Some server responses return a bare array rather than an envelope.
         return try JSONDecoder().decode([AdminSessionMessage].self, from: data)
+    }
+
+    /// `GET /api/skills`. Read-only inventory; no create/content-edit/toggle wired here.
+    func readSkills(target: AdminTarget) async throws -> [AdminSkillSummary] {
+        let data = try await perform(get(
+            path: "api/skills",
+            target: target,
+            query: [URLQueryItem(name: "profile", value: target.profile)]
+        ))
+        return try JSONDecoder().decode([AdminSkillSummary].self, from: data)
+    }
+
+    /// `GET /api/tools/toolsets`. Read-only; no enable/disable wired here.
+    func readToolsets(target: AdminTarget) async throws -> [AdminToolsetSummary] {
+        let data = try await perform(get(
+            path: "api/tools/toolsets",
+            target: target,
+            query: [URLQueryItem(name: "profile", value: target.profile)]
+        ))
+        return try JSONDecoder().decode([AdminToolsetSummary].self, from: data)
+    }
+
+    /// `GET /api/mcp/servers`. Read-only; server pre-redacts env values. No add/remove/
+    /// enable/test/auth wired here.
+    func readMCPServers(target: AdminTarget) async throws -> [AdminMCPServerSummary] {
+        let data = try await perform(get(
+            path: "api/mcp/servers",
+            target: target,
+            query: [URLQueryItem(name: "profile", value: target.profile)]
+        ))
+        struct Envelope: Decodable { let servers: [AdminMCPServerSummary] }
+        return try JSONDecoder().decode(Envelope.self, from: data).servers
     }
 
     func write(_ resource: AdminResource, target: AdminTarget, value: String) async throws {
