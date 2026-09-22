@@ -740,6 +740,22 @@ final class AdminClientTests: XCTestCase {
         }
     }
 
+    func testReadSessionDetailDecodesRawIntBooleansFromRealServerShape() async throws {
+        // GET /api/sessions/{id} (detail) returns archived/pinned as raw SQLite 0/1 ints,
+        // unlike GET /api/sessions (list), which explicitly casts to real JSON booleans.
+        // A prior bug decoded Bool-only, throwing a type-mismatch on every real session detail
+        // fetch (verified directly against the live dashboard) — this reproduces that shape.
+        let target = try AdminTarget(address: "https://example.com", profile: "default")
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"{"id":"s1","title":"x","profile":"default","archived":1,"pinned":0}"#)
+        ])
+
+        let detail = try await HermesAdminClient(transport: transport).readSessionDetail(target: target, id: "s1")
+
+        XCTAssertTrue(detail.archived)
+        XCTAssertFalse(detail.pinned)
+    }
+
     func testReadSessionMessagesDecodesEnvelopeAndBareArrayShapes() async throws {
         let target = try AdminTarget(address: "https://example.com", profile: "default")
         let envelopeTransport = AdminFixtureTransport(responses: [

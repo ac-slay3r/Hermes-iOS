@@ -267,8 +267,25 @@ struct AdminSessionDetail: Equatable, Decodable, Sendable {
         id = try values.decode(String.self, forKey: .id)
         title = try values.decodeIfPresent(String.self, forKey: .title)
         profile = try values.decodeIfPresent(String.self, forKey: .profile) ?? ""
-        archived = try values.decodeIfPresent(Bool.self, forKey: .archived) ?? false
-        pinned = try values.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
+        // GET /api/sessions/{id} (detail) returns archived/pinned as raw SQLite 0/1 ints,
+        // unlike GET /api/sessions (list), which explicitly casts them to real JSON booleans.
+        // decodeIfPresent(Bool.self, ...) throws a type-mismatch on a present-but-wrong-type
+        // value rather than falling through to a default — same failure class as the message
+        // id bug. Accept either shape.
+        archived = try Self.decodeLenientBool(values, forKey: .archived) ?? false
+        pinned = try Self.decodeLenientBool(values, forKey: .pinned) ?? false
+    }
+
+    private static func decodeLenientBool(
+        _ values: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys
+    ) throws -> Bool? {
+        if let boolValue = try? values.decodeIfPresent(Bool.self, forKey: key) {
+            return boolValue
+        }
+        if let intValue = try? values.decodeIfPresent(Int.self, forKey: key) {
+            return intValue != 0
+        }
+        return nil
     }
 }
 
