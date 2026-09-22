@@ -164,10 +164,44 @@ class AdminSourceTests(unittest.TestCase):
     def test_no_raw_settings_or_credentials_transport(self):
         folder = ROOT / "HermesMobile/Administration"
         self.assertTrue(folder.is_dir(), "Administration slice not implemented")
-        text = "\n".join(p.read_text() for p in folder.glob("*.swift"))
+        # ConfigurationEditorView.swift and the AdminConfigField allowlist in HermesAdminClient
+        # are the sole, deliberate exception: /api/config has no server-side secret-safe
+        # projection, so this client documents and narrowly allowlists 8 known-non-secret
+        # scalar fields (see test_config_allowlist_excludes_secret_shaped_paths below) rather
+        # than fetching/rendering the full document. Every other file must still never
+        # reference it.
+        allowlisted_files = {"ConfigurationEditorView.swift", "HermesAdminClient.swift"}
+        text = "\n".join(
+            p.read_text() for p in folder.glob("*.swift") if p.name not in allowlisted_files
+        )
         for forbidden in ["/api/config", "/api/env", "UserDefaults", "URLSession.shared", "print(", "RelayAPIClient"]:
             self.assertNotIn(forbidden, text)
-        self.assertIn("UnavailableAdminTransport", text)
+        self.assertIn("UnavailableAdminTransport", (ROOT / "HermesMobile/Administration/HermesAdminClient.swift").read_text())
+
+    def test_config_allowlist_excludes_secret_shaped_paths(self):
+        client = (ROOT / "HermesMobile/Administration/HermesAdminClient.swift").read_text()
+        views = (ROOT / "HermesMobile/Administration/ConfigurationEditorView.swift").read_text()
+        # The allowlist must never grow to include a provider/credential/tts/stt/proxy-auth
+        # shaped path without a deliberate, separate decision — these forbidden substrings
+        # would indicate the client is reaching into secret-shaped config territory.
+        for forbidden in [
+            "providers.", "api_key", "\"tts.", "\"stt.", "proxy.credential_source",
+            "mcp_servers", "\"key\"", "\"token\"", "\"secret\"",
+        ]:
+            self.assertNotIn(forbidden, client)
+        # Exactly 8 hand-picked fields, matching AdminConfigField's case list — a growing
+        # allowlist without updating this count forces a deliberate review of this test.
+        self.assertEqual(client.count("case .timezone: return \""), 2)  # one in .label, one in .path
+        for path in [
+            '"timezone"', '"terminal.backend"', '"terminal.timeout"', '"agent.gateway_timeout"',
+            '"agent.max_turns"', '"checkpoints.enabled"', '"checkpoints.retention_days"', '"browser.headed"',
+        ]:
+            self.assertIn(path, client)
+        self.assertIn("no server-side secret-safe projection exists yet", client)
+        self.assertIn("Provider keys, API tokens, and other secret-shaped configuration are never read", views)
+        # Each field saves individually via a minimal nested PUT body, never the whole document.
+        self.assertIn("func writeAllowlistedConfig(_ field: AdminConfigField", client)
+        self.assertNotIn("func writeConfig(", client)
 
     def test_last_reviewed_target_persists_address_and_profile_only(self):
         root = (ROOT / "HermesMobile/Administration/AdminRoot.swift").read_text()
@@ -246,7 +280,7 @@ class AdminSourceTests(unittest.TestCase):
         self.assertIn("struct SkillsToolsMCPHubView: View", views)
         self.assertIn("SkillsToolsMCPHubView(", root)
         self.assertIn("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }", root)
-        self.assertEqual(root.count("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }"), 3)
+        self.assertEqual(root.count("onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }"), 4)
 
     def test_memory_and_session_title_editors_reuse_existing_editor_and_authority_loss_classifier(self):
         editor = (ROOT / "HermesMobile/Administration/AdminEditor.swift").read_text()

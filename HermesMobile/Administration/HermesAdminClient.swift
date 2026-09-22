@@ -28,6 +28,74 @@ enum AdminResource: Equatable, Sendable {
     }
 }
 
+/// A deliberately small, hand-picked allowlist of `/api/config` scalar fields that are never
+/// secret-shaped (no provider/tts/stt/proxy-credential paths; every field here is a plain
+/// timeout, toggle, or non-sensitive selector). `/api/config` and `/api/config/schema` return
+/// the ENTIRE config document unfiltered — no server-side secret-safe projection exists yet
+/// (tracked separately) — so this client deliberately reads/writes only these named paths and
+/// nothing else, rather than rendering the full schema.
+enum AdminConfigField: String, CaseIterable, Sendable {
+    case timezone
+    case terminalBackend
+    case terminalTimeout
+    case agentGatewayTimeout
+    case agentMaxTurns
+    case checkpointsEnabled
+    case checkpointsRetentionDays
+    case browserHeaded
+
+    var label: String {
+        switch self {
+        case .timezone: return "Timezone"
+        case .terminalBackend: return "Terminal backend"
+        case .terminalTimeout: return "Terminal command timeout (seconds)"
+        case .agentGatewayTimeout: return "Gateway inactivity timeout (seconds)"
+        case .agentMaxTurns: return "Max turns per run (0 = unlimited)"
+        case .checkpointsEnabled: return "Filesystem checkpoints enabled"
+        case .checkpointsRetentionDays: return "Checkpoint retention (days)"
+        case .browserHeaded: return "Browser runs headed (visible window)"
+        }
+    }
+
+    /// Dotted config.yaml path, matching the server's own schema keys.
+    var path: String {
+        switch self {
+        case .timezone: return "timezone"
+        case .terminalBackend: return "terminal.backend"
+        case .terminalTimeout: return "terminal.timeout"
+        case .agentGatewayTimeout: return "agent.gateway_timeout"
+        case .agentMaxTurns: return "agent.max_turns"
+        case .checkpointsEnabled: return "checkpoints.enabled"
+        case .checkpointsRetentionDays: return "checkpoints.retention_days"
+        case .browserHeaded: return "browser.headed"
+        }
+    }
+
+    enum Kind: Equatable, Sendable {
+        case string, number, boolean, selectString([String])
+    }
+
+    var kind: Kind {
+        switch self {
+        case .timezone: return .string
+        case .terminalBackend: return .selectString(["local", "docker", "ssh", "modal", "daytona", "vercel_sandbox", "singularity"])
+        case .terminalTimeout, .agentGatewayTimeout, .agentMaxTurns, .checkpointsRetentionDays: return .number
+        case .checkpointsEnabled, .browserHeaded: return .boolean
+        }
+    }
+}
+
+enum AdminConfigValue: Equatable, Sendable {
+    case string(String)
+    case number(Double)
+    case boolean(Bool)
+    case null
+}
+
+struct AdminConfigSnapshot: Equatable, Sendable {
+    var values: [AdminConfigField: AdminConfigValue]
+}
+
 struct AdminSnapshot: Equatable, Sendable {
     let value: String
     let exists: Bool
@@ -705,6 +773,77 @@ struct HermesAdminClient {
     func write(_ resource: AdminResource, target: AdminTarget, value: String) async throws {
         let data = try await perform(request(resource, target: target, value: value))
         guard try JSONDecoder().decode(Receipt.self, from: data).ok else { throw AdminError.rejected }
+    }
+
+    /// `GET /api/config`, projected down to the hand-picked allowlist only. Unlisted keys
+    /// (including anything provider/tts/stt/proxy-credential-shaped) are never decoded,
+    /// stored, or displayed by this client.
+    func readAllowlistedConfig(target: AdminTarget) async throws -> AdminConfigSnapshot {
+        let data = try await perform(get(
+            path: "api/config",
+            target: target,
+            query: [URLQueryItem(name: "profile", value: target.profile)]
+        ))
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { throw AdminError.malformedResponse }
+        var values: [AdminConfigField: AdminConfigValue] = [:]
+        for field in AdminConfigField.allCases {
+            values[field] = Self.extract(field, from: root)
+        }
+        return AdminConfigSnapshot(values: values)
+    }
+
+    /// `PUT /api/config` with a minimal nested body containing ONLY the one changed
+    /// allowlisted field. The server deep-merges over disk, so every other key (including
+    /// secret-bearing ones this client never reads) is left untouched.
+    func writeAllowlistedConfig(_ field: AdminConfigField, value: AdminConfigValue, target: AdminTarget) async throws {
+        let payload: [String: Any] = ["config": Self.nestedBody(field, value: value), "profile": target.profile]
+        guard var components = URLComponents(url: target.baseURL.appendingPathComponent("api/config"), resolvingAgainstBaseURL: false)
+        else { throw AdminError.invalidTarget }
+        components.queryItems = nil
+        guard let url = components.url else { throw AdminError.invalidTarget }
+        var result = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+        result.httpMethod = "PUT"
+        result.setValue("application/json", forHTTPHeaderField: "Accept")
+        result.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        result.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let data = try await perform(result)
+        guard let receipt = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (receipt["ok"] as? Bool) == true
+        else { throw AdminError.rejected }
+    }
+
+    private static func extract(_ field: AdminConfigField, from root: [String: Any]) -> AdminConfigValue {
+        var cursor: Any? = root
+        for segment in field.path.split(separator: ".") {
+            guard let dict = cursor as? [String: Any] else { return .null }
+            cursor = dict[String(segment)]
+        }
+        switch cursor {
+        case let s as String: return .string(s)
+        case let b as Bool: return .boolean(b)
+        case let n as NSNumber:
+            // NSNumber from JSONSerialization can box a Bool too; Bool is checked above.
+            return .number(n.doubleValue)
+        case Optional<Any>.none, nil: return .null
+        default: return .null
+        }
+    }
+
+    private static func nestedBody(_ field: AdminConfigField, value: AdminConfigValue) -> [String: Any] {
+        let leaf: Any
+        switch value {
+        case .string(let s): leaf = s
+        case .number(let n): leaf = n
+        case .boolean(let b): leaf = b
+        case .null: leaf = NSNull()
+        }
+        var segments = field.path.split(separator: ".").map(String.init)
+        var body: Any = leaf
+        while let last = segments.popLast() {
+            body = [last: body]
+        }
+        return body as? [String: Any] ?? [:]
     }
 
     private func perform(_ request: URLRequest) async throws -> Data {
