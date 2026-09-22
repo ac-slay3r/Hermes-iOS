@@ -319,6 +319,160 @@ struct AdminHTTPResponse: Sendable {
     let body: Data
 }
 
+/// One row from `GET /api/cron/jobs`. Read-only summary; no create/update/delete/pause/
+/// resume/trigger wired here — trigger executes work and may deliver messages/spend money.
+struct AdminCronJobSummary: Equatable, Decodable, Sendable, Identifiable {
+    let id: String
+    let name: String
+    let enabled: Bool
+    let scheduleDisplay: String
+    let profile: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, enabled
+        case scheduleDisplay = "schedule_display"
+        case profile
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decodeIfPresent(String.self, forKey: .id) ?? "unknown"
+        name = try values.decodeIfPresent(String.self, forKey: .name) ?? "cron job"
+        enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        scheduleDisplay = try values.decodeIfPresent(String.self, forKey: .scheduleDisplay) ?? "?"
+        profile = try values.decodeIfPresent(String.self, forKey: .profile)
+    }
+}
+
+/// One row from `GET /api/messaging/platforms`. Read-only status; no platform config/env/test
+/// wired here — env writes and connectivity tests are explicit-consequence M4/M5 actions.
+struct AdminMessagingPlatformSummary: Equatable, Decodable, Sendable, Identifiable {
+    let id: String
+    let name: String
+    let enabled: Bool
+    let configured: Bool
+    let gatewayRunning: Bool
+    let state: String?
+    let errorMessage: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, enabled, configured
+        case gatewayRunning = "gateway_running"
+        case state
+        case errorMessage = "error_message"
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        name = try values.decodeIfPresent(String.self, forKey: .name) ?? id
+        enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        configured = try values.decodeIfPresent(Bool.self, forKey: .configured) ?? false
+        gatewayRunning = try values.decodeIfPresent(Bool.self, forKey: .gatewayRunning) ?? false
+        state = try values.decodeIfPresent(String.self, forKey: .state)
+        errorMessage = try values.decodeIfPresent(String.self, forKey: .errorMessage)
+    }
+}
+
+/// One row from `GET /api/webhooks`. Read-only summary; no create/enable/delete wired here —
+/// webhook bodies carry prompt/script/events/delivery/secret, a high-impact execution boundary.
+struct AdminWebhookSummary: Equatable, Decodable, Sendable, Identifiable {
+    let name: String
+    let description: String
+    let events: [String]
+    let deliver: String
+    let enabled: Bool
+    let secretSet: Bool
+    var id: String { name }
+
+    enum CodingKeys: String, CodingKey {
+        case name, description, events, deliver, enabled
+        case secretSet = "secret_set"
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        name = try values.decode(String.self, forKey: .name)
+        description = try values.decodeIfPresent(String.self, forKey: .description) ?? ""
+        events = try values.decodeIfPresent([String].self, forKey: .events) ?? []
+        deliver = try values.decodeIfPresent(String.self, forKey: .deliver) ?? "log"
+        enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        secretSet = try values.decodeIfPresent(Bool.self, forKey: .secretSet) ?? false
+    }
+}
+
+struct AdminWebhooksStatus: Equatable, Decodable, Sendable {
+    let enabled: Bool
+    let baseURL: String?
+    let subscriptions: [AdminWebhookSummary]
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case baseURL = "base_url"
+        case subscriptions
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        baseURL = try values.decodeIfPresent(String.self, forKey: .baseURL)
+        subscriptions = try values.decodeIfPresent([AdminWebhookSummary].self, forKey: .subscriptions) ?? []
+    }
+}
+
+/// Read-only view of `GET /api/pairing`. No approve/revoke/clear-pending wired here —
+/// pairing authorizes messaging users, a distinct high-impact boundary from dashboard reads.
+struct AdminPairingStatus: Equatable, Decodable, Sendable {
+    let pending: [AdminPairingEntry]
+    let approved: [AdminPairingEntry]
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        pending = try values.decodeIfPresent([AdminPairingEntry].self, forKey: .pending) ?? []
+        approved = try values.decodeIfPresent([AdminPairingEntry].self, forKey: .approved) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey { case pending, approved }
+}
+
+/// Pairing entries are platform-defined dictionaries; decode leniently and surface only
+/// display-safe fields rather than assuming a fixed schema across platforms.
+struct AdminPairingEntry: Equatable, Decodable, Sendable, Identifiable {
+    let id: String
+    let source: String?
+    let displayName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, source, name
+        case displayName = "display_name"
+        case userID = "user_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let fallbackID = try values.decodeIfPresent(String.self, forKey: .userID)
+        id = try values.decodeIfPresent(String.self, forKey: .id) ?? fallbackID ?? UUID().uuidString
+        source = try values.decodeIfPresent(String.self, forKey: .source)
+        displayName = try values.decodeIfPresent(String.self, forKey: .displayName)
+            ?? values.decodeIfPresent(String.self, forKey: .name)
+    }
+}
+
+/// One line from `GET /api/logs`. Read-only tail view; raw text, never treated as structured
+/// editable data.
+struct AdminLogsResult: Equatable, Decodable, Sendable {
+    let file: String
+    let lines: [String]
+
+    enum CodingKeys: String, CodingKey { case file, lines }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        file = try values.decodeIfPresent(String.self, forKey: .file) ?? ""
+        lines = try values.decodeIfPresent([String].self, forKey: .lines) ?? []
+    }
+}
+
 enum AdminError: Error {
     case invalidTarget, invalidResource, unavailable, malformedResponse, wrongTarget
     case http(Int), rejected
@@ -488,6 +642,64 @@ struct HermesAdminClient {
         ))
         struct Envelope: Decodable { let servers: [AdminMCPServerSummary] }
         return try JSONDecoder().decode(Envelope.self, from: data).servers
+    }
+
+    /// `GET /api/cron/jobs`. Always binds to the reviewed target's exact profile; server
+    /// defaults to "all" profiles when omitted, so profile is never left implicit.
+    /// No create/update/delete/pause/resume/trigger wired here.
+    func readCronJobs(target: AdminTarget) async throws -> [AdminCronJobSummary] {
+        let data = try await perform(get(
+            path: "api/cron/jobs",
+            target: target,
+            query: [URLQueryItem(name: "profile", value: target.profile)]
+        ))
+        return try JSONDecoder().decode([AdminCronJobSummary].self, from: data)
+    }
+
+    /// `GET /api/messaging/platforms`. Read-only; no config/env/test wired here.
+    func readMessagingPlatforms(target: AdminTarget) async throws -> [AdminMessagingPlatformSummary] {
+        let data = try await perform(get(
+            path: "api/messaging/platforms",
+            target: target,
+            query: [URLQueryItem(name: "profile", value: target.profile)]
+        ))
+        struct Envelope: Decodable { let platforms: [AdminMessagingPlatformSummary] }
+        return try JSONDecoder().decode(Envelope.self, from: data).platforms
+    }
+
+    /// `GET /api/webhooks`. Read-only; no create/enable/delete wired here.
+    func readWebhooks(target: AdminTarget) async throws -> AdminWebhooksStatus {
+        let data = try await perform(get(path: "api/webhooks", target: target))
+        return try JSONDecoder().decode(AdminWebhooksStatus.self, from: data)
+    }
+
+    /// `GET /api/pairing`. Read-only; no approve/revoke/clear-pending wired here.
+    func readPairing(target: AdminTarget) async throws -> AdminPairingStatus {
+        let data = try await perform(get(
+            path: "api/pairing",
+            target: target,
+            query: [URLQueryItem(name: "profile", value: target.profile)]
+        ))
+        return try JSONDecoder().decode(AdminPairingStatus.self, from: data)
+    }
+
+    /// `GET /api/logs`. Read-only tail view; `file`/`level`/`component`/`search` mirror the
+    /// server's own filter vocabulary. No profile parameter server-side (serving-context only).
+    func readLogs(
+        target: AdminTarget,
+        file: String = "agent",
+        lines: Int = 100,
+        search: String? = nil
+    ) async throws -> AdminLogsResult {
+        var query = [
+            URLQueryItem(name: "file", value: file),
+            URLQueryItem(name: "lines", value: String(min(max(lines, 1), 500)))
+        ]
+        if let search, !search.isEmpty {
+            query.append(URLQueryItem(name: "search", value: search))
+        }
+        let data = try await perform(get(path: "api/logs", target: target, query: query))
+        return try JSONDecoder().decode(AdminLogsResult.self, from: data)
     }
 
     func write(_ resource: AdminResource, target: AdminTarget, value: String) async throws {
