@@ -191,7 +191,23 @@ struct AdminRoot: View {
                         Label("Overview & health", systemImage: "lock")
                             .foregroundStyle(.secondary)
                     }
-                    plannedArea("Configuration & models", systemImage: "slider.horizontal.3")
+                    if let overview, let authSession {
+                        NavigationLink {
+                            ConfigurationEditorView(
+                                target: overview.target,
+                                client: HermesAdminClient(transport: URLSessionAdminTransport(
+                                    target: overview.target,
+                                    accessTokenProvider: { authSession.accessToken }
+                                )),
+                                onAuthorityLost: { handleAuthorityLost(for: overview.target, session: authSession) }
+                            )
+                        } label: {
+                            Label("Configuration & models", systemImage: "slider.horizontal.3")
+                        }
+                        .accessibilityIdentifier("admin.configuration")
+                    } else {
+                        plannedArea("Configuration & models", systemImage: "slider.horizontal.3", reason: "Locked")
+                    }
                     if let overview, let authSession {
                         NavigationLink {
                             ProfilesListView(

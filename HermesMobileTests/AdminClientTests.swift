@@ -959,6 +959,73 @@ final class AdminClientTests: XCTestCase {
         XCTAssertTrue(query.contains("search=error"))
     }
 
+    func testReadAllowlistedConfigExtractsOnlyKnownFieldsFromFullDocument() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        // The server returns the FULL config document (including a secret-shaped key this
+        // client never reads) — the allowlist projection must extract only its 8 named paths.
+        let transport = AdminFixtureTransport(responses: [
+            .json(#"""
+            {
+                "timezone": "America/New_York",
+                "terminal": {"backend": "docker", "timeout": 240},
+                "agent": {"gateway_timeout": 900, "max_turns": null},
+                "checkpoints": {"enabled": true, "retention_days": 14},
+                "browser": {"headed": false},
+                "providers": {"anthropic": {"api_key": "sk-should-never-be-read"}}
+            }
+            """#)
+        ])
+
+        let snapshot = try await HermesAdminClient(transport: transport).readAllowlistedConfig(target: target)
+
+        XCTAssertEqual(snapshot.values[.timezone], .string("America/New_York"))
+        XCTAssertEqual(snapshot.values[.terminalBackend], .string("docker"))
+        XCTAssertEqual(snapshot.values[.terminalTimeout], .number(240))
+        XCTAssertEqual(snapshot.values[.agentGatewayTimeout], .number(900))
+        XCTAssertEqual(snapshot.values[.agentMaxTurns], .null)
+        XCTAssertEqual(snapshot.values[.checkpointsEnabled], .boolean(true))
+        XCTAssertEqual(snapshot.values[.checkpointsRetentionDays], .number(14))
+        XCTAssertEqual(snapshot.values[.browserHeaded], .boolean(false))
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.url?.path, "/dashboard/api/config")
+        XCTAssertEqual(request.url?.query, "profile=work")
+    }
+
+    func testWriteAllowlistedConfigSendsMinimalNestedBodyForOneField() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [.json(#"{"ok":true}"#)])
+
+        try await HermesAdminClient(transport: transport).writeAllowlistedConfig(
+            .checkpointsRetentionDays, value: .number(30), target: target
+        )
+
+        let request = try XCTUnwrap(transport.requests.first)
+        XCTAssertEqual(request.httpMethod, "PUT")
+        XCTAssertEqual(request.url?.path, "/dashboard/api/config")
+        let body = try XCTUnwrap(request.httpBody)
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(decoded["profile"] as? String, "work")
+        let config = try XCTUnwrap(decoded["config"] as? [String: Any])
+        // Only the ONE changed field is present, nested at its dotted path — never the whole document.
+        XCTAssertEqual(config.count, 1)
+        let checkpoints = try XCTUnwrap(config["checkpoints"] as? [String: Any])
+        XCTAssertEqual(checkpoints.count, 1)
+        XCTAssertEqual(checkpoints["retention_days"] as? Int, 30)
+    }
+
+    func testWriteAllowlistedConfigRejectedWhenServerReturnsNotOK() async throws {
+        let target = try AdminTarget(address: "https://example.com/dashboard", profile: "work")
+        let transport = AdminFixtureTransport(responses: [.json(#"{"ok":false}"#)])
+        do {
+            try await HermesAdminClient(transport: transport).writeAllowlistedConfig(
+                .browserHeaded, value: .boolean(true), target: target
+            )
+            XCTFail("Expected AdminError.rejected")
+        } catch AdminError.rejected {
+            // expected
+        }
+    }
+
     private func makeEditor(_ transport: any AdminTransport) throws -> AdminEditor {
         AdminEditor(client: HermesAdminClient(transport: transport), target: try AdminTarget(address: "https://example.com", profile: "default"))
     }
